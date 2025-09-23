@@ -14,8 +14,8 @@ RUN apk update && apk add --no-cache \
     bash
 
 # Copy the script into the container
-COPY run.sh /
-RUN chmod a+x /run.sh
+COPY run.sh /etc/cont-init.d/
+RUN chmod a+x /etc/cont-init.d/run.sh
 
 # Set the script as the entrypoint
-CMD [ "/run.sh" ]
+CMD [ "/init" ]
