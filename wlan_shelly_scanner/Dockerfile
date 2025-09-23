@@ -18,4 +18,4 @@ COPY run.sh /etc/cont-init.d/
 RUN chmod a+x /etc/cont-init.d/run.sh
 
 # Set the script as the entrypoint
-CMD [ "/init" ]
+CMD [ "bash" ]
