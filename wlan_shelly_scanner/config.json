@@ -1,0 +1,21 @@
+{
+  "name": "WLAN Shelly Scanner",
+  "version": "1.0.1",
+  "slug": "wlan_shelly_scanner",
+  "description": "Scans for Wi-Fi networks with 'shelly' in the SSID",
+  "arch": ["armhf", "armv7", "aarch64", "amd64", "i386"],
+  "startup": "once",
+  "boot": "auto",
+  "host_network": false,
+  "privileged": [
+    "NET_ADMIN"
+  ],
+  "options": {
+    "interface": "wlan0",
+    "search_term": "shelly"
+  },
+  "schema": {
+    "interface": "str",
+    "search_term": "str"
+  }
+}
