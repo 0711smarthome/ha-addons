@@ -17,5 +17,10 @@ RUN apk update && apk add --no-cache \
 COPY run.sh /etc/services.d/wifi-scanner/run
 RUN chmod a+x /etc/services.d/wifi-scanner/run
 
+<<<<<<< HEAD
 # Set the S6 overlay init as the entrypoint (this is correct!)
 CMD [ "/init" ]
+=======
+# Set the script as the entrypoint
+CMD [ "bash" ]
+>>>>>>> refs/remotes/origin/main
