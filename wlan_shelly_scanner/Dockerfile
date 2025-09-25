@@ -5,7 +5,7 @@ FROM $BUILD_FROM
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 # Install necessary tools:
-#   - iw: The main tool for scanning Wi-Fi networks
+#   - iw: The main tool for scanning Wi--Fi networks
 #   - jq: To read the configuration from options.json
 #   - bash: A better shell
 RUN apk update && apk add --no-cache \
@@ -17,10 +17,5 @@ RUN apk update && apk add --no-cache \
 COPY run.sh /etc/services.d/wifi-scanner/run
 RUN chmod a+x /etc/services.d/wifi-scanner/run
 
-<<<<<<< HEAD
 # Set the S6 overlay init as the entrypoint (this is correct!)
 CMD [ "/init" ]
-=======
-# Set the script as the entrypoint
-CMD [ "bash" ]
->>>>>>> refs/remotes/origin/main
