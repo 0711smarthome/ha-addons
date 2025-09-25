@@ -1,21 +1,25 @@
 {
-  "name": "WLAN Shelly Scanner",
-  "version": "1.0.4",
-  "slug": "wlan_shelly_scanner",
-  "description": "Scans for Wi-Fi networks with 'shelly' in the SSID",
-  "arch": ["armhf", "armv7", "aarch64", "amd64", "i386"],
-  "startup": "once",
-  "boot": "auto",
-  "host_network": false,
-  "privileged": [
-    "NET_ADMIN"
+  "name": "WLAN Scanner",
+  "version": "10.0.0",
+  "slug": "wifi_scanner",
+  "description": "Sucht periodisch nach WLAN-Netzwerken und gibt sie im Log aus.",
+  "arch": [
+    "aarch64",
+    "amd64",
+    "armhf",
+    "armv7",
+    "i386"
   ],
+  "startup": "application",
+  "boot": "auto",
+  "init": false,
+  "host_network": true,
   "options": {
     "interface": "wlan0",
-    "search_term": "shelly"
+    "scan_interval": 60
   },
   "schema": {
     "interface": "str",
-    "search_term": "str"
+    "scan_interval": "int(10,)"
   }
 }

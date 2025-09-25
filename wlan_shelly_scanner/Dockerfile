@@ -13,9 +13,9 @@ RUN apk update && apk add --no-cache \
     jq \
     bash
 
-# Copy the script into the container
-COPY run.sh /etc/cont-init.d/
-RUN chmod a+x /etc/cont-init.d/run.sh
+# Copy the script into the container as a long-running service
+COPY run.sh /etc/services.d/wifi-scanner/run
+RUN chmod a+x /etc/services.d/wifi-scanner/run
 
-# Set the script as the entrypoint
+# Set the S6 overlay init as the entrypoint (this is correct!)
 CMD [ "/init" ]
