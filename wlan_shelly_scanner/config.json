@@ -1,6 +1,6 @@
 {
   "name": "WLAN Scanner",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "slug": "wifi_scanner",
   "description": "Sucht periodisch nach WLAN-Netzwerken und gibt sie im Log aus.",
   "arch": [
@@ -14,6 +14,9 @@
   "boot": "auto",
   "init": false,
   "host_network": true,
+  "privileged": [
+    "NET_ADMIN"
+  ],
   "options": {
     "interface": "wlan0",
     "scan_interval": 60
