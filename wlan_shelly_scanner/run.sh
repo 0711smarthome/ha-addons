@@ -37,17 +37,21 @@ fi
 echo "Interface '${INTERFACE}' gefunden. Starte die Schleife."
 
 # Endlosschleife, um periodisch zu scannen
+# Endlosschleife, um periodisch zu scannen
 while true; do
     echo "Suche nach WLAN-Netzwerken..."
     SCAN_OUTPUT=$(iw dev "${INTERFACE}" scan 2>&1)
     EXIT_CODE=$?
 
     if [ ${EXIT_CODE} -eq 0 ]; then
-        # ... (Logik für Safe Mode wie gehabt)
-
-        # Extrahiere SSIDs und speichere sie in einer JSON-Datei für die UI
-        SSIDS=$(echo "${SCAN_OUTPUT}" | grep "SSID:" | sed 's/\tSSID: //' | sed '/^$/d')
+        # Scan war ERFOLGREICH
         
+        # Unabhängig vom Safe Mode geben wir immer die gefilterten SSIDs aus
+        echo "Scan erfolgreich. Gefilterte SSIDs:"
+        SSIDS=$(echo "${SCAN_OUTPUT}" | grep "SSID:" | sed 's/\tSSID: //' | sed '/^$/d')
+        echo "${SSIDS}"
+        
+        # Erstelle eine JSON-Liste der SSIDs für die Weboberfläche
         JSON_SSIDS="["
         FIRST=true
         while IFS= read -r line; do
@@ -55,7 +59,7 @@ while true; do
                 if [ "$FIRST" = "false" ]; then
                     JSON_SSIDS="${JSON_SSIDS},"
                 fi
-                # Escape Anführungszeichen in SSIDs
+                # Escape Anführungszeichen in SSIDs, um gültiges JSON zu erzeugen
                 line=$(echo "$line" | sed 's/"/\\"/g')
                 JSON_SSIDS="${JSON_SSIDS}\"$line\""
                 FIRST=false
@@ -66,7 +70,12 @@ while true; do
         # Schreibe die JSON-Datei in das Web-Verzeichnis
         echo "$JSON_SSIDS" > /var/www/wifi_list.json
     else
-        # ... (Fehlerbehandlung wie gehabt)
+        # Scan ist FEHLGESCHLAGEN -> HIER KOMMT DIE FEHLERBEHANDLUNG
+        echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+        echo "FEHLER: Der 'iw scan' Befehl ist fehlgeschlagen mit Exit-Code ${EXIT_CODE}."
+        echo "Die Fehlermeldung war:"
+        echo "${SCAN_OUTPUT}"
+        echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
     fi
     
     echo "Warte ${INTERVAL} Sekunden bis zum nächsten Scan."
