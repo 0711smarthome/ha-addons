@@ -1,6 +1,6 @@
 {
   "name": "WLAN Scanner",
-  "version": "1.2.6",
+  "version": "1.2.7",
   "slug": "wifi_scanner",
   "description": "Sucht periodisch nach WLAN-Netzwerken und gibt sie im Log aus.",
   "arch": [
@@ -17,6 +17,8 @@
   "privileged": [
     "NET_ADMIN"
   ],
+  "ingress": true,
+  "panel_icon": "mdi:wifi-search",
   "options": {
     "interface": "wlan0",
     "scan_interval": 60,
