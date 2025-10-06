@@ -5,17 +5,26 @@ FROM $BUILD_FROM
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 # Install necessary tools:
-#   - iw: The main tool for scanning Wi--Fi networks
-#   - jq: To read the configuration from options.json
+#   - iw: For scanning Wi-Fi networks
+#   - jq: To read configuration
 #   - bash: A better shell
+#   - python3 & pip: For running the Flask web server
 RUN apk update && apk add --no-cache \
     iw \
     jq \
-    bash
+    bash \
+    python3 \
+    py3-pip
 
-# Copy the script into the container as a long-running service
-COPY run.sh /etc/services.d/wifi-scanner/run
-RUN chmod a+x /etc/services.d/wifi-scanner/run
+# Copy the web application into the container
+COPY rootfs/ /
 
-# Set the S6 overlay init as the entrypoint (this is correct!)
-CMD [ "/init" ]
+# Install Python dependencies
+RUN pip3 install --no-cache-dir -r /app/requirements.txt
+
+# Copy the run script and make it executable
+COPY run.sh /
+RUN chmod a+x /run.sh
+
+# Set the script as the container's entrypoint
+CMD [ "/run.sh" ]

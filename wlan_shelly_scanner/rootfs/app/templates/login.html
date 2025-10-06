@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PIN-Eingabe</title>
+    <style>
+        body { font-family: sans-serif; background-color: #f4f4f4; text-align: center; padding-top: 50px; }
+        .container { background: white; padding: 30px; border-radius: 8px; display: inline-block; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        input[type="password"] { padding: 10px; font-size: 16px; border: 1px solid #ccc; border-radius: 4px; }
+        button { padding: 10px 20px; font-size: 16px; background-color: #03a9f4; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        .error { color: red; margin-top: 15px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Bitte PIN eingeben</h2>
+        <form method="post">
+            <input type="password" name="pin" autofocus>
+            <button type="submit">Bestätigen</button>
+        </form>
+        {% if error %}
+            <p class="error">{{ error }}</p>
+        {% endif %}
+    </div>
+</body>
+</html>
