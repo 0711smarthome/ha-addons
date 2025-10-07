@@ -14,13 +14,14 @@ SUPERVISOR_TOKEN = os.environ.get("SUPERVISOR_TOKEN")
 HEADERS = {"Authorization": f"Bearer {SUPERVISOR_TOKEN}"}
 
 def log(message):
+    """Schreibt eine Nachricht in die Log-Datei und auf die Konsole."""
     log_message = f"{time.strftime('%Y-%m-%d %H:%M:%S')} - {message}"
     print(log_message)
-    with open(LOG_FILE, "a") as f:
+    with open(LOG_FILE, "a", encoding="utf-8") as f:
         f.write(log_message + "\n")
 
 async def update_network(interface, options):
-    """Sendet einen Befehl an die Supervisor Network API."""
+    """Sendet einen Befehl an die Supervisor Network API via curl."""
     url = f"http://supervisor/network/interface/{interface}/update"
     try:
         proc = await asyncio.create_subprocess_exec(
@@ -30,10 +31,15 @@ async def update_network(interface, options):
         )
         stdout, stderr = await proc.communicate()
         if proc.returncode != 0:
-            log(f"FEHLER bei API-Aufruf: {stderr.decode()}")
+            log(f"FEHLER beim API-Aufruf: {stderr.decode()}")
             return False
-        log("API-Befehl zur Netzwerk-Änderung erfolgreich gesendet.")
-        return True
+        response_data = json.loads(stdout)
+        if response_data.get("result") == "ok":
+            log("API-Befehl zur Netzwerk-Änderung erfolgreich gesendet.")
+            return True
+        else:
+            log(f"API-Befehl wurde mit Fehler beantwortet: {response_data.get('message')}")
+            return False
     except Exception as e:
         log(f"Schwerer Fehler beim API-Aufruf: {e}")
         return False
@@ -79,7 +85,11 @@ async def main():
         for shelly_ssid in selected_shellies:
             log(f"--- Bearbeite: {shelly_ssid} ---")
             
-            options = {"wifi": {"ssid": shelly_ssid, "auth": "open"}}
+            # HIER DIE FINALE KORREKTUR: "ipv4" hinzugefügt
+            options = {
+                "ipv4": {"method": "auto"},
+                "wifi": {"ssid": shelly_ssid, "auth": "open"}
+            }
             if not await update_network(interface, options):
                 log(f"FEHLER beim Senden des Verbindungs-Befehls für {shelly_ssid}.")
                 continue
@@ -98,10 +108,11 @@ async def main():
                 url = f"http://192.168.33.1/settings/sta?ssid={quote(user_ssid)}&pass={quote(user_pass)}&enable=true"
                 log("Sende WLAN-Daten an Shelly...")
                 try:
-                    subprocess.run(["curl", "-v", "--fail", "--max-time", "15", url], check=True, capture_output=True)
+                    # Führe curl als externen Prozess aus
+                    result = subprocess.run(["curl", "-v", "--fail", "--max-time", "15", url], check=True, capture_output=True, text=True)
                     log("Erfolg! Shelly wurde konfiguriert.")
                 except subprocess.CalledProcessError as e:
-                    log(f"FEHLER beim Senden der Konfiguration: {e.stderr.decode()}")
+                    log(f"FEHLER beim Senden der Konfiguration: {e.stderr}")
             else:
                 log(f"FEHLER: Verbindung fehlgeschlagen. Letzte IP: {current_ip}")
 
@@ -109,7 +120,14 @@ async def main():
         log(f"Ein unerwarteter Fehler ist aufgetreten: {e}")
     finally:
         log("--- Konfiguration abgeschlossen. ---")
-        log("HINWEIS: WLAN-Verbindung des Hosts wird nicht automatisch zurückgesetzt. Bitte bei Bedarf manuell prüfen.")
+        log("Stelle die Verbindung zum Heim-WLAN wieder her...")
+        # Stellt die Verbindung zum ursprünglichen WLAN wieder her
+        restore_options = {
+            "ipv4": {"method": "auto"},
+            "wifi": {"ssid": user_ssid, "auth": "wpa-psk", "psk": user_pass}
+        }
+        await update_network(interface, restore_options)
+        log("Der Befehl zur Wiederherstellung wurde gesendet. Bitte die Host-Verbindung prüfen.")
         if os.path.exists(TASK_FILE): os.remove(TASK_FILE)
 
 if __name__ == "__main__":
