@@ -1,6 +1,6 @@
 {
   "name": "WLAN Scanner",
-  "version": "1.7.4",
+  "version": "1.8.0",
   "slug": "wifi_scanner",
   "description": "Sucht und konfiguriert Shelly-WLAN-Netzwerke.",
   "arch": [

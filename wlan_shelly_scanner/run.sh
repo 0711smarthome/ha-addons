@@ -62,9 +62,10 @@ if ! ip link show "${INTERFACE}" > /dev/null 2>&1; then echo "FEHLER: Interface 
 echo "Interface '${INTERFACE}' gefunden. Starte die Schleife."
 while true; do
     if [ -f /tmp/configure_now ]; then
-        echo "Konfigurations-Trigger erkannt! Starte Konfigurations-Skript im Hintergrund."
+        echo "Konfigurations-Trigger erkannt! Starte Python-Konfigurations-Skript."
         rm /tmp/configure_now
-        /configure_shellies.sh &
+        # HIER DIE ÄNDERUNG:
+        /configure_shellies.py &
     fi
     echo "Suche nach WLAN-Netzwerken..."
     SCAN_OUTPUT=$(iw dev "${INTERFACE}" scan 2>&1)
