@@ -1,8 +1,8 @@
 {
   "name": "WLAN Scanner",
-  "version": "1.6.2",
+  "version": "1.6.3",
   "slug": "wifi_scanner",
-  "description": "Sucht periodisch nach WLAN-Netzwerken und gibt sie im Log aus.",
+  "description": "Sucht und konfiguriert Shelly-WLAN-Netzwerke.",
   "arch": [
     "aarch64",
     "amd64",
@@ -17,17 +17,16 @@
   "privileged": [
     "NET_ADMIN"
   ],
+  "dbus": true,
   "ingress": true,
   "ingress_port": 80,
   "panel_icon": "mdi:wifi-search",
   "options": {
     "interface": "wlan0",
-    "scan_interval": 60,
-    "safe_mode": true
+    "scan_interval": 60
   },
   "schema": {
     "interface": "str",
-    "scan_interval": "int(10,)",
-    "safe_mode": "bool"
+    "scan_interval": "int(10,)"
   }
 }
