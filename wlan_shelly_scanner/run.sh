@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
 set -e
 
-# --- Prozess- und Signal-Management ---
+# --- Prozess-Management ---
 NGINX_PID=
 API_PIDS=()
-
 term_handler(){
     echo "Stopping background services..."
     if [ -n "${NGINX_PID}" ]; then kill "${NGINX_PID}"; fi
@@ -14,36 +13,35 @@ term_handler(){
 }
 trap 'term_handler' SIGTERM
 
-# --- Start der Hintergrunddienste ---
+# --- Start der Dienste ---
 echo "WLAN Scanner Add-on wird gestartet!"
 nginx -g "daemon off; error_log /dev/stdout info;" &
 NGINX_PID=$!
 
 echo "Starte API-Listener..."
-# API für Scan-Trigger auf Port 8888
+# API für Scan-Trigger auf Port 8888 (unverändert)
 (while true; do ncat -l 8888 -c 'echo -e "HTTP/1.1 204 No Content\r\n\r\n" && touch /tmp/scan_now'; done) &
 API_PIDS+=($!)
 
-# API zum Starten der Konfiguration auf Port 8889
-(while true; do ncat -l 8889 --keep-open -c 'exec /bin/bash -c " > /data/progress.log && sed '\''1,/^\r$/d'\'' > /data/task.json && touch /tmp/configure_now && echo -e \"HTTP/1.1 204 No Content\r\n\r\n\""'; done) &
+# API zum Starten der Konfiguration auf Port 8889 (NEU und VEREINFACHT)
+# Dieser Listener schreibt nur noch die rohe Anfrage weg und ist sofort fertig.
+(while true; do ncat -l 8889 -c 'cat > /data/raw_task.tmp && echo -e "HTTP/1.1 204 No Content\r\n\r\n" && touch /tmp/configure_now'; done) &
 API_PIDS+=($!)
 
-# API zum Abfragen des Fortschritts auf Port 8890
+# API zum Abfragen des Fortschritts auf Port 8890 (unverändert)
 (while true; do ncat -l 8890 -c 'echo -e "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\n" && cat /data/progress.log 2>/dev/null'; done) &
 API_PIDS+=($!)
 
-# --- Konfiguration & Start ---
+# --- Konfiguration & Start-Schleife (unverändert) ---
+# ... (der Rest der run.sh bleibt exakt gleich wie in der letzten Version) ...
 CONFIG_PATH=/data/options.json
 INTERFACE=$(jq --raw-output '.interface // "wlan0"' $CONFIG_PATH)
 INTERVAL=$(jq --raw-output '.scan_interval // 60' $CONFIG_PATH)
-
 echo "Verwende Interface: ${INTERFACE}"
 echo "Scan-Intervall: ${INTERVAL} Sekunden"
 echo "Prüfe, ob das Interface '${INTERFACE}' existiert..."
 if ! ip link show "${INTERFACE}" > /dev/null 2>&1; then echo "FEHLER: Interface nicht gefunden."; exit 1; fi
 echo "Interface '${INTERFACE}' gefunden. Starte die Schleife."
-
-# --- Hauptschleife ---
 while true; do
     if [ -f /tmp/configure_now ]; then
         echo "Konfigurations-Trigger erkannt! Starte Konfigurations-Skript im Hintergrund."
