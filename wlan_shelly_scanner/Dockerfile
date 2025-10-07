@@ -5,7 +5,7 @@ LABEL Ihr Name <IhreEmail@example.com>
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
-# Wir brauchen networkmanager NICHT. Die ha CLI ist der richtige Weg.
+# Wir installieren networkmanager NICHT. Die ha CLI ist der richtige Weg.
 RUN apk update && apk add --no-cache \
     nginx \
     iw \
