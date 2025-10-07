@@ -43,7 +43,7 @@ while true; do
         echo "Konfigurations-Trigger erkannt! Starte Python-Konfigurations-Skript."
         rm /tmp/configure_now
         # HIER DIE KORREKTUR: rufe .py statt .sh auf
-        SUPERVISOR_TOKEN=$SUPERVISOR_TOKEN /configure_shellies.py &
+        /configure_shellies.py "$SUPERVISOR_TOKEN" &
     fi
     echo "Suche nach WLAN-Netzwerken..."
     SCAN_OUTPUT=$(iw dev "${INTERFACE}" scan 2>&1)

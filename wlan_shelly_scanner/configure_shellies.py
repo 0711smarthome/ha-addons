@@ -7,12 +7,21 @@ import time
 from urllib.parse import quote
 import aiohttp
 import fcntl
+import sys
 
 # Konstanten
 LOG_FILE = "/data/progress.log"
 TASK_FILE = "/data/task.json"
 CONFIG_PATH = "/data/options.json"
-SUPERVISOR_TOKEN = os.environ.get("SUPERVISOR_TOKEN")
+# --- FINALE ÄNDERUNG HIER ---
+# Wir versuchen, den Token aus dem ersten Kommandozeilen-Argument zu lesen.
+# Wenn das nicht klappt, versuchen wir als Fallback die Umgebungsvariable.
+if len(sys.argv) > 1 and sys.argv[1]:
+    SUPERVISOR_TOKEN = sys.argv[1]
+else:
+    SUPERVISOR_TOKEN = os.environ.get("SUPERVISOR_TOKEN")
+# --- ENDE DER ÄNDERUNG ---
+HEADERS = {"Authorization": f"Bearer {SUPERVISOR_TOKEN}"}
 HEADERS = {"Authorization": f"Bearer {SUPERVISOR_TOKEN}"}
 
 def log(message):
