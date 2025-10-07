@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
-set -e  # <-- VORÜBERGEHEND FÜR DEBUGGING AUSKOMMENTIERT
+set -e
 
-# --- Prozess- und Signal-Management ---
 NGINX_PID=
 API_PIDS=()
 
@@ -14,45 +13,33 @@ term_handler(){
 }
 trap 'term_handler' SIGTERM
 
-# --- Start der Hintergrunddienste ---
 echo "WLAN Scanner Add-on wird gestartet!"
 nginx -g "daemon off; error_log /dev/stdout info;" &
 NGINX_PID=$!
 
 echo "Starte API-Listener..."
-start_scan_api() {
-    while true; do ncat -l 8888 -c 'echo -e "HTTP/1.1 204 No Content\r\n\r\n" && touch /tmp/scan_now'; done
-}
-start_configure_api() {
-    while true; do ncat -l 8889 --keep-open -c 'exec /bin/bash -c " > /data/progress.log && sed '\''1,/^\r$/d'\'' > /data/task.json && touch /tmp/configure_now && echo -e \"HTTP/1.1 204 No Content\r\n\r\n\""'; done
-}
-start_progress_api() {
-    while true; do ncat -l 8890 -c 'echo -e "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\n" && cat /data/progress.log 2>/dev/null'; done
-}
-start_scan_api &
+(while true; do ncat -l 8888 -c 'echo -e "HTTP/1.1 204 No Content\r\n\r\n" && touch /tmp/scan_now'; done) &
 API_PIDS+=($!)
-start_configure_api &
+(while true; do ncat -l 8889 --keep-open -c 'exec /bin/bash -c "sed '\''1,/^\r$/d'\'' > /data/task.json && touch /tmp/configure_now && echo -e \"HTTP/1.1 204 No Content\r\n\r\n\""'; done) &
 API_PIDS+=($!)
-start_progress_api &
+(while true; do ncat -l 8890 -c 'echo -e "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\n" && cat /data/progress.log 2>/dev/null'; done) &
 API_PIDS+=($!)
 
-# --- Konfiguration & Start ---
 CONFIG_PATH=/data/options.json
 INTERFACE=$(jq --raw-output '.interface // "wlan0"' $CONFIG_PATH)
 INTERVAL=$(jq --raw-output '.scan_interval // 60' $CONFIG_PATH)
 
 echo "Verwende Interface: ${INTERFACE}"
-echo "Scan-Intervall: ${INTERVAL} Sekunden"
 echo "Prüfe, ob das Interface '${INTERFACE}' existiert..."
 if ! ip link show "${INTERFACE}" > /dev/null 2>&1; then echo "FEHLER: Interface nicht gefunden."; exit 1; fi
 echo "Interface '${INTERFACE}' gefunden. Starte die Schleife."
 
-# --- Hauptschleife ---
 while true; do
     if [ -f /tmp/configure_now ]; then
-        echo "Konfigurations-Trigger erkannt! Starte Konfigurations-Skript."
+        echo "Konfigurations-Trigger erkannt! Starte Python-Konfigurations-Skript."
         rm /tmp/configure_now
-        /configure_shellies.sh &
+        # HIER DIE KORREKTUR: rufe .py statt .sh auf
+        /configure_shellies.py &
     fi
     echo "Suche nach WLAN-Netzwerken..."
     SCAN_OUTPUT=$(iw dev "${INTERFACE}" scan 2>&1)
@@ -60,7 +47,6 @@ while true; do
     if [ ${EXIT_CODE} -eq 0 ]; then
         echo "Scan erfolgreich."
         SSIDS=$(echo "${SCAN_OUTPUT}" | grep "SSID:" | sed 's/\tSSID: //' | sed '/^$/d')
-        # Wir verwenden wieder die robustere, manuelle JSON-Erstellung
         JSON_SSIDS="["
         FIRST=true
         while IFS= read -r line; do
