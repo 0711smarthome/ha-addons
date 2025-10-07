@@ -12,7 +12,10 @@ RUN apk update && apk add --no-cache \
     bash && \
     rm -rf /var/cache/apk/*
 
-# Kopiere unsere Nginx-Konfiguration an den richtigen Ort im Container
+# ENTFERNE die Standard-Nginx-Seite, um Konflikte zu vermeiden
+RUN rm /etc/nginx/http.d/default.conf
+
+# Kopiere unsere Ingress-Konfiguration in den Standard-Ordner für Server-Blöcke
 COPY nginx/ingress.conf /etc/nginx/http.d/ingress.conf
 
 # Kopiere die Web-Dateien
