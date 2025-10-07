@@ -1,12 +1,12 @@
 {
   "name": "WLAN Scanner",
-  "version": "2.6.6",
+  "version": "2.6.8",
   "slug": "wifi_scanner",
   "description": "Sucht und konfiguriert Shelly-WLAN-Netzwerke.",
   "arch": [ "aarch64", "amd64", "armhf", "armv7", "i386" ],
   "startup": "application",
   "boot": "auto",
-  "init": false,
+  "init": true,
 
   "host_network": true,
   "hassio_api": true,
