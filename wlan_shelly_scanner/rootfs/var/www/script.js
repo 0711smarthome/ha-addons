@@ -1,3 +1,76 @@
+// Globale Variable für das Polling-Interval
+let progressInterval = null;
+
+// Funktion zum Abfragen und Anzeigen des Fortschritts
+async function updateProgress() {
+    const logOutput = document.getElementById('logOutput');
+    try {
+        const response = await fetch('/api/progress?' + new Date().getTime()); // Cache umgehen
+        const progressText = await response.text();
+        logOutput.textContent = progressText;
+        // Scrolle die Box automatisch nach unten
+        logOutput.scrollTop = logOutput.scrollHeight;
+        
+        // Stoppe das Polling, wenn das Log-File das Ende anzeigt
+        if (progressText.includes("abgeschlossen")) {
+            clearInterval(progressInterval);
+            document.querySelector('#wifiForm button[type="submit"]').disabled = false; // Button wieder aktivieren
+        }
+    } catch (error) {
+        logOutput.textContent += "\nFehler beim Abrufen des Fortschritts.";
+        clearInterval(progressInterval);
+        document.querySelector('#wifiForm button[type="submit"]').disabled = false;
+    }
+}
+
+// Event Listener für das Formular
+document.getElementById('wifiForm').addEventListener('submit', async function(event) {
+    event.preventDefault(); 
+    
+    // Stoppe eventuell laufendes altes Polling
+    if (progressInterval) {
+        clearInterval(progressInterval);
+    }
+
+    const selectedShellies = Array.from(document.querySelectorAll('input[name="selected_shelly"]:checked')).map(cb => cb.value);
+    const userSsid = document.getElementById('userSsid').value;
+    const userPassword = document.getElementById('userPassword').value;
+
+    if (selectedShellies.length === 0) {
+        alert('Bitte wähle mindestens ein Shelly-Gerät aus.');
+        return;
+    }
+
+    // Zeige den Log-Bereich an und deaktiviere den Button
+    const progressArea = document.getElementById('progressArea');
+    progressArea.style.display = 'block';
+    document.getElementById('logOutput').textContent = 'Initialisiere Konfiguration...';
+    document.querySelector('#wifiForm button[type="submit"]').disabled = true;
+
+    // Bereite die Daten für den POST-Request vor
+    const taskData = {
+        selectedShellies,
+        userSsid,
+        userPassword
+    };
+
+    try {
+        // Sende die Aufgabe an das Backend
+        await fetch('/api/configure', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(taskData)
+        });
+
+        // Starte das Polling, um den Fortschritt abzufragen
+        progressInterval = setInterval(updateProgress, 2000); // Alle 2 Sekunden
+
+    } catch (error) {
+        document.getElementById('logOutput').textContent = 'FEHLER beim Starten der Konfiguration: ' + error.message;
+        document.querySelector('#wifiForm button[type="submit"]').disabled = false;
+    }
+});
+
 async function triggerScan() {
     const wifiListDiv = document.getElementById('wifiList');
     wifiListDiv.innerHTML = '<p>Manueller Scan gestartet, bitte warten...</p>';

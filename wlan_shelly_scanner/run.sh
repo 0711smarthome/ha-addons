@@ -1,49 +1,40 @@
 #!/usr/bin/env bash
-# Stellt sicher, dass das Skript bei Fehlern abbricht
 set -e
 
 # --- Prozess- und Signal-Management ---
-
-# PIDs der Hintergrundprozesse speichern, um sie sauber beenden zu können
 NGINX_PID=
-SOCAT_PID=
+SOCAT_SCAN_PID=
+SOCAT_CONFIGURE_PID=
+SOCAT_PROGRESS_PID=
 
-# SIGTERM-handler: Wird beim Stoppen des Add-ons ausgeführt.
 term_handler(){
     echo "Stopping background services..."
-    # Beende die Prozesse, falls sie laufen
-    if [ -n "${NGINX_PID}" ]; then
-        kill "${NGINX_PID}"
-    fi
-    if [ -n "${SOCAT_PID}" ]; then
-        kill "${SOCAT_PID}"
-    fi
+    if [ -n "${NGINX_PID}" ]; then kill "${NGINX_PID}"; fi
+    if [ -n "${SOCAT_SCAN_PID}" ]; then kill "${SOCAT_SCAN_PID}"; fi
+    if [ -n "${SOCAT_CONFIGURE_PID}" ]; then kill "${SOCAT_CONFIGURE_PID}"; fi
+    if [ -n "${SOCAT_PROGRESS_PID}" ]; then kill "${SOCAT_PROGRESS_PID}"; fi
     echo "WLAN Scanner stopped."
     exit 0
 }
-
-# Richte den Signal-Handler ein, um auf das Beenden-Signal von Home Assistant zu reagieren
 trap 'term_handler' SIGTERM
 
-
 # --- Start der Hintergrunddienste ---
-
 echo "WLAN Scanner Add-on wird gestartet!"
-
-# Starte den Nginx Webserver im Hintergrund
-echo "Starte Webserver..."
 nginx -g "daemon off; error_log /dev/stdout info;" &
 NGINX_PID=$!
 
-# Starte den API-Listener im Hintergrund
-echo "Starte API-Listener auf Port 8888..."
-# Diese Endlosschleife startet socat immer wieder neu, falls es sich beendet.
-# Sie wird beim Herunterfahren durch den term_handler gekillt.
-while true; do
-  # Antwortet mit HTTP 200 OK und erstellt dann die Trigger-Datei
-  echo -e "HTTP/1.1 200 OK\r\nContent-Length: 0\r\n" | socat - TCP-LISTEN:8888,fork,reuseaddr EXEC:'touch /tmp/scan_now'
-done &
-SOCAT_PID=$!
+echo "Starte API-Listener..."
+# API für Scan-Trigger
+(while true; do echo -e "HTTP/1.1 200 OK\r\n" | socat - TCP-LISTEN:8888,fork,reuseaddr EXEC:'touch /tmp/scan_now'; done) &
+SOCAT_SCAN_PID=$!
+
+# API zum Starten der Konfiguration (empfängt POST-Daten)
+(while true; do socat - TCP-LISTEN:8889,fork,reuseaddr EXEC:'/bin/bash -c "read -r -d \"\" body && echo \"$body\" > /data/task.json && touch /tmp/configure_now"' ; done) &
+SOCAT_CONFIGURE_PID=$!
+
+# API zum Abfragen des Fortschritts
+(while true; do echo -e "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n" && cat /data/progress.log | socat - TCP-LISTEN:8890,fork,reuseaddr - ; done) &
+SOCAT_PROGRESS_PID=$!
 
 
 # --- Konfiguration auslesen ---
@@ -76,6 +67,14 @@ echo "Interface '${INTERFACE}' gefunden. Starte die Schleife."
 # --- Hauptschleife ---
 
 while true; do
+    # Prüfe, ob eine Konfiguration gestartet werden soll
+    if [ -f /tmp/configure_now ]; then
+        echo "Konfigurations-Trigger erkannt!"
+        rm /tmp/configure_now
+        # Führe das Konfigurations-Skript im Hintergrund aus, um die Hauptschleife nicht zu blockieren
+        /configure_shellies.sh &
+    fi
+    
     echo "Suche nach WLAN-Netzwerken..."
     SCAN_OUTPUT=$(iw dev "${INTERFACE}" scan 2>&1)
     EXIT_CODE=$?
