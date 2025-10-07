@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# set -e  # <-- VORÜBERGEHEND FÜR DEBUGGING AUSKOMMENTIERT
+set -e  # <-- VORÜBERGEHEND FÜR DEBUGGING AUSKOMMENTIERT
 
 # --- Prozess- und Signal-Management ---
 NGINX_PID=
