@@ -54,6 +54,11 @@ async def main():
     log("Starte Python-Konfigurationsprozess...")
 
     try:
+        # Prüfen, ob die Datei existiert und nicht leer ist
+        if not os.path.exists(TASK_FILE) or os.path.getsize(TASK_FILE) == 0:
+            log(f"FEHLER: Aufgabendatei ({TASK_FILE}) ist leer oder existiert nicht.")
+            return # Beendet das Skript hier
+
         with open(TASK_FILE, 'r') as f: task = json.load(f)
         with open(CONFIG_PATH, 'r') as f: config = json.load(f)
         
@@ -99,6 +104,8 @@ async def main():
                 else:
                     log(f"FEHLER: Verbindung fehlgeschlagen. Letzte IP: {current_ip}")
 
+    except json.JSONDecodeError as e:
+        log(f"FEHLER beim Parsen der JSON-Aufgabendatei: {e}")
     except Exception as e:
         log(f"Ein unerwarteter Fehler ist aufgetreten: {e}")
     finally:

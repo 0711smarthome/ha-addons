@@ -20,21 +20,27 @@ NGINX_PID=$!
 echo "Starte API-Listener..."
 (while true; do ncat -l 8888 -c 'echo -e "HTTP/1.1 204 No Content\r\n\r\n" && touch /tmp/scan_now'; done) &
 API_PIDS+=($!)
+# Ersetze den vorherigen ncat-Block für Port 8889 hiermit:
 (while true; do 
     ncat -l 8889 --keep-open -c '
-        # Sendet sofort eine "Accepted"-Antwort an den Browser
+        # Schritt 1: Lese den gesamten Request-Body in eine temporäre Datei.
+        # cat liest die Standardeingabe (die Netzwerkverbindung), bis sie geschlossen wird.
+        BODY_TEMP_FILE=$(mktemp)
+        cat > "$BODY_TEMP_FILE"
+
+        # Schritt 2: Sende die Antwort an den Browser.
+        # Der Body ist jetzt sicher gespeichert, wir können antworten.
         echo -e "HTTP/1.1 202 Accepted\r\n\r\n"
         
-        # Führt die eigentliche Arbeit im Hintergrund aus
+        # Schritt 3: Verarbeite die gespeicherte Datei im Hintergrund.
         (
-            TEMP_FILE=$(mktemp)
-            # Liest den Request-Body in eine temporäre Datei
-            sed "1,/\r$/d" > "$TEMP_FILE"
+            # Entferne die HTTP-Header aus der gespeicherten Body-Datei
+            sed "1,/\r\$/d" "$BODY_TEMP_FILE" > /data/task.json
             
-            # Verschiebt die temporäre Datei atomar an den Zielort
-            mv "$TEMP_FILE" /data/task.json
+            # Lösche die temporäre Body-Datei
+            rm "$BODY_TEMP_FILE"
             
-            # Erstellt die Trigger-Datei
+            # Erstelle die Trigger-Datei
             touch /tmp/configure_now
         ) &
     '
