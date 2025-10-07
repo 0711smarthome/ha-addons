@@ -5,32 +5,26 @@ LABEL Ihr Name <IhreEmail@example.com>
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
-# Wir installieren NUR die benötigten Pakete für die Shell-Lösung.
+# Wir installieren Python und die offizielle Home Assistant API Bibliothek
+# Dies ist der einzige Befehl, der fehlschlagen kann.
 RUN apk add --no-cache \
+    python3 \
+    py3-pip \
     nginx \
     iw \
     jq \
     bash \
     nmap-ncat \
-    networkmanager \
     curl \
-    util-linux
+    util-linux && \
+    pip install --break-system-packages "homeassistant-api==0.4.1" "asyncio==3.4.3"
 
-# Test, der den Build abbricht, falls nmcli absolut nirgends zu finden ist.
-# Wir suchen im gesamten Dateisystem nach der Datei.
-RUN if ! find / -name "nmcli" -print -quit | grep -q nmcli; then \
-        echo "!!! FATAL: nmcli wurde nirgends im System gefunden !!!"; \
-        exit 1; \
-    else \
-        echo "--- SUCCESS: nmcli wurde im Dateisystem gefunden. ---"; \
-    fi
-
-# ... Rest bleibt gleich ...
+# Restliche Konfiguration
 RUN rm -f /etc/nginx/http.d/default.conf
 COPY nginx/ingress.conf /etc/nginx/http.d/ingress.conf
 COPY rootfs/ /
 COPY run.sh /run.sh
-COPY configure_shellies.sh /configure_shellies.sh
-RUN chmod a+x /run.sh /configure_shellies.sh
+COPY configure_shellies.py /configure_shellies.py
+RUN chmod a+x /run.sh /configure_shellies.py
 
 CMD [ "/run.sh" ]
