@@ -15,6 +15,24 @@ trap 'term_handler' SIGTERM
 
 # --- Start der Dienste ---
 echo "WLAN Scanner Add-on wird gestartet!"
+
+# +++ DEBUGGING-BLOCK für "ha" +++
+echo "--- HA CLI DEBUGGING START ---"
+if command -v ha &> /dev/null; then
+    echo "SUCCESS: 'ha' CLI wurde im PATH gefunden."
+    echo "Pfad: $(which ha)"
+else
+    echo "WARNUNG: 'ha' CLI wurde NICHT im Standard-PATH gefunden. Das Skript verwendet den Hardcode-Pfad /usr/bin/ha."
+fi
+if [ -f /usr/bin/ha ]; then
+    echo "INFO: Die Datei /usr/bin/ha existiert."
+else
+    echo "!!!!!!!!!! FATALER FEHLER: Die Datei /usr/bin/ha existiert NICHT. !!!!!!!!!!"
+fi
+echo "--- HA CLI DEBUGGING END ---"
+# +++ ENDE DEBUGGING-BLOCK +++
+
+
 nginx -g "daemon off; error_log /dev/stdout info;" &
 NGINX_PID=$!
 

@@ -1,6 +1,6 @@
 {
   "name": "WLAN Scanner",
-  "version": "1.7.3",
+  "version": "1.7.4",
   "slug": "wifi_scanner",
   "description": "Sucht und konfiguriert Shelly-WLAN-Netzwerke.",
   "arch": [
@@ -15,7 +15,7 @@
   "init": false,
   "host_network": true,
   "hassio_api": true,
-  "hassio_role": "default",
+  "hassio_role": "manager",
   "privileged": [
     "NET_ADMIN"
   ],
