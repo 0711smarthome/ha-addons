@@ -3,10 +3,15 @@ FROM $BUILD_FROM
 
 LABEL Ihr Name <IhreEmail@example.com>
 
+# Dieses Argument zwingt Docker, die RUN-Zeile neu auszuführen
+ARG CACHE_BUSTER=none
+
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
-# Stellt sicher, dass alle unsere Werkzeuge installiert sind
-RUN apk update && apk add --no-cache \
+# Wir löschen den apk-Cache und installieren dann alles in einem Schritt
+# Das stellt sicher, dass alles frisch heruntergeladen wird.
+RUN rm -rf /var/cache/apk/* && \
+    apk update && apk add --no-cache \
     nginx \
     iw \
     jq \
@@ -14,11 +19,10 @@ RUN apk update && apk add --no-cache \
     nmap-ncat \
     networkmanager \
     curl \
-    util-linux && \
-    rm -rf /var/cache/apk/*
+    util-linux
 
 # ENTFERNE die Standard-Nginx-Seite, um Konflikte zu vermeiden
-RUN rm /etc/nginx/http.d/default.conf
+RUN rm -f /etc/nginx/http.d/default.conf
 
 COPY nginx/ingress.conf /etc/nginx/http.d/ingress.conf
 COPY rootfs/ /

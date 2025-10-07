@@ -1,19 +1,20 @@
 #!/bin/bash
 # Diese Datei führt den eigentlichen Konfigurationsprozess aus.
 
-# HIER DIE KORREKTUR: Wir definieren die Hauptlogik in einer Funktion...
 main() {
     LOG_FILE="/data/progress.log"
     TASK_FILE="/data/task.json"
+    CONFIG_PATH=/data/options.json
 
-    # Funktion zum Loggen
+    # Lese das zu verwendende Interface aus der Add-on Konfiguration
+    INTERFACE=$(jq --raw-output '.interface // "wlan0"' $CONFIG_PATH)
+
     log() {
         echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" | tee -a "$LOG_FILE"
     }
 
-    log "Starte Konfigurationsprozess..."
+    log "Starte Konfigurationsprozess auf Interface: $INTERFACE"
 
-    # Lese die Daten aus der Task-Datei
     SELECTED_SHELLIES=$(jq -r '.selectedShellies[]' "$TASK_FILE" || true)
     USER_SSID=$(jq -r '.userSsid' "$TASK_FILE" || true)
     USER_PASS=$(jq -r '.userPassword' "$TASK_FILE" || true)
@@ -24,14 +25,13 @@ main() {
         exit 1
     fi
 
-    # ... Der Rest der Logik (for-Schleife, nmcli, curl etc.) bleibt genau gleich ...
-    # (Hier ist deine Testversion mit auskommentiertem curl)
     for shelly_ssid in $SELECTED_SHELLIES; do
         log "---------------------------------------------"
         log "Bearbeite: $shelly_ssid"
         
         log "Versuche, mit dem Shelly-Hotspot zu verbinden (Timeout: 20s)..."
-        if nmcli device wifi connect "$shelly_ssid" --timeout 20; then
+        # HIER DIE KORREKTUR: Wir sagen nmcli explizit, welches Interface es nutzen soll.
+        if nmcli device wifi connect "$shelly_ssid" ifname "$INTERFACE" --timeout 20; then
             log "Erfolgreich mit '$shelly_ssid' verbunden."
             sleep 5
             
@@ -42,6 +42,7 @@ main() {
             log "Sende WLAN-Daten an den Shelly..."
             log "SSID: $USER_SSID"
             log "URL: $URL"
+            # HIER AKTIVIEREN WIR JETZT DEN CURL-BEFEHL
             #CURL_OUTPUT=$(curl -v --fail --max-time 15 -s "$URL" 2>&1)
             #CURL_EXIT_CODE=$?
             #if [ $CURL_EXIT_CODE -eq 0 ]; then
@@ -68,8 +69,6 @@ main() {
     rm "$TASK_FILE"
 }
 
-# ... UND HIER RUFEN WIR DIE FUNKTION INNERHALB VON FLOCK AUF.
-# Dies ist die korrekte und sicherste Methode.
 (
   flock -n 200 || { echo "Konfigurationsprozess läuft bereits."; exit 1; }
   main
