@@ -2,16 +2,13 @@
 set -e
 
 # --- Prozess- und Signal-Management ---
-# Wir speichern jetzt die PIDs aller ncat-Prozesse in einem Array
+NGINX_PID=
 API_PIDS=()
 
 term_handler(){
     echo "Stopping background services..."
     if [ -n "${NGINX_PID}" ]; then kill "${NGINX_PID}"; fi
-    # Beende alle API-Listener-Prozesse
-    for pid in "${API_PIDS[@]}"; do
-        kill "$pid" 2>/dev/null
-    done
+    for pid in "${API_PIDS[@]}"; do kill "$pid" 2>/dev/null; done
     echo "WLAN Scanner stopped."
     exit 0
 }
@@ -23,35 +20,17 @@ nginx -g "daemon off; error_log /dev/stdout info;" &
 NGINX_PID=$!
 
 echo "Starte API-Listener..."
-# Jede API wird jetzt in einer eigenen Funktion gestartet, das ist übersichtlicher.
-
 # API für Scan-Trigger auf Port 8888
-start_scan_api() {
-    while true; do
-        ncat -l 8888 -c 'echo -e "HTTP/1.1 204 No Content\r\n\r\n" && touch /tmp/scan_now'
-    done
-}
+(while true; do ncat -l 8888 -c 'echo -e "HTTP/1.1 204 No Content\r\n\r\n" && touch /tmp/scan_now'; done) &
+API_PIDS+=($!)
 
 # API zum Starten der Konfiguration auf Port 8889
-start_configure_api() {
-    while true; do
-        ncat -l 8889 -c 'echo -e "HTTP/1.1 204 No Content\r\n\r\n" && > /data/progress.log && cat > /data/task.json && touch /tmp/configure_now'
-    done
-}
+# HIER DIE KORREKTUR: "sed" entfernt die HTTP-Header, bevor in die Datei geschrieben wird.
+(while true; do ncat -l 8889 --keep-open -c 'exec /bin/bash -c " > /data/progress.log && sed '\''1,/^\r$/d'\'' > /data/task.json && touch /tmp/configure_now && echo -e \"HTTP/1.1 204 No Content\r\n\r\n\""'; done) &
+API_PIDS+=($!)
 
 # API zum Abfragen des Fortschritts auf Port 8890
-start_progress_api() {
-    while true; do
-        ncat -l 8890 -c 'echo -e "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n" && cat /data/progress.log 2>/dev/null'
-    done
-}
-
-# Starte alle API-Listener im Hintergrund und sammle ihre PIDs
-start_scan_api &
-API_PIDS+=($!)
-start_configure_api &
-API_PIDS+=($!)
-start_progress_api &
+(while true; do ncat -l 8890 -c 'echo -e "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\n" && cat /data/progress.log 2>/dev/null'; done) &
 API_PIDS+=($!)
 
 # --- Konfiguration & Start ---
@@ -61,21 +40,18 @@ INTERVAL=$(jq --raw-output '.scan_interval // 60' $CONFIG_PATH)
 
 echo "Verwende Interface: ${INTERFACE}"
 echo "Scan-Intervall: ${INTERVAL} Sekunden"
+# ... Rest des Skripts bleibt unverändert ...
 echo "Prüfe, ob das Interface '${INTERFACE}' existiert..."
-if ! ip link show "${INTERFACE}" > /dev/null 2>&1; then
-    echo "FEHLER: Interface nicht gefunden."
-    exit 1
-fi
+if ! ip link show "${INTERFACE}" > /dev/null 2>&1; then echo "FEHLER: Interface nicht gefunden."; exit 1; fi
 echo "Interface '${INTERFACE}' gefunden. Starte die Schleife."
 
-# --- Hauptschleife (bleibt unverändert) ---
+# --- Hauptschleife ---
 while true; do
     if [ -f /tmp/configure_now ]; then
         echo "Konfigurations-Trigger erkannt! Starte Konfigurations-Skript im Hintergrund."
         rm /tmp/configure_now
         /configure_shellies.sh &
     fi
-
     echo "Suche nach WLAN-Netzwerken..."
     SCAN_OUTPUT=$(iw dev "${INTERFACE}" scan 2>&1)
     EXIT_CODE=$?
@@ -97,7 +73,6 @@ while true; do
     else
         echo "FEHLER: Der 'iw scan' Befehl ist fehlgeschlagen mit Exit-Code ${EXIT_CODE}."
     fi
-    
     echo "Warte bis zu ${INTERVAL} Sekunden auf den nächsten Scan (oder API-Trigger)..."
     for ((i=0; i<INTERVAL; i++)); do
         if [ -f /tmp/scan_now ]; then
