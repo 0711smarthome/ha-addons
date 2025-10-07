@@ -53,6 +53,12 @@ async def main():
     with open(LOG_FILE, 'w') as f: f.write('') # Log leeren
     log("Starte Python-Konfigurationsprozess...")
 
+    # --- NEUE DEBUG-ZEILE HINZUFÜGEN ---
+    log(f"DEBUG: Supervisor Token vorhanden: {'Ja' if SUPERVISOR_TOKEN else 'Nein'}")
+    if SUPERVISOR_TOKEN:
+        log(f"DEBUG: Token beginnt mit: {SUPERVISOR_TOKEN[:5]}, endet mit: {SUPERVISOR_TOKEN[-5:]}")
+    # --- ENDE DEBUG-ZEILE ---    
+
     try:
         # Prüfen, ob die Datei existiert und nicht leer ist
         if not os.path.exists(TASK_FILE) or os.path.getsize(TASK_FILE) == 0:
