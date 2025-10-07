@@ -5,17 +5,13 @@ LABEL Ihr Name <IhreEmail@example.com>
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
-# Füge benötigte Werkzeuge hinzu:
-# networkmanager: Für nmcli zur Steuerung von WLAN-Verbindungen
-# curl: Zum Senden von Web-Anfragen an die Shellies
-# socat: Für unsere interne API
-# util-linux: Für das flock-Kommando
+# Tausche socat gegen nmap-ncat, das besser für simple Webserver geeignet ist
 RUN apk update && apk add --no-cache \
     nginx \
     iw \
     jq \
     bash \
-    socat \
+    nmap-ncat \
     networkmanager \
     curl \
     util-linux && \

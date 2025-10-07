@@ -2,17 +2,16 @@
 set -e
 
 # --- Prozess- und Signal-Management ---
-NGINX_PID=
-SOCAT_SCAN_PID=
-SOCAT_CONFIGURE_PID=
-SOCAT_PROGRESS_PID=
+# Wir speichern jetzt die PIDs aller ncat-Prozesse in einem Array
+API_PIDS=()
 
 term_handler(){
     echo "Stopping background services..."
     if [ -n "${NGINX_PID}" ]; then kill "${NGINX_PID}"; fi
-    if [ -n "${SOCAT_SCAN_PID}" ]; then kill "${SOCAT_SCAN_PID}"; fi
-    if [ -n "${SOCAT_CONFIGURE_PID}" ]; then kill "${SOCAT_CONFIGURE_PID}"; fi
-    if [ -n "${SOCAT_PROGRESS_PID}" ]; then kill "${SOCAT_PROGRESS_PID}"; fi
+    # Beende alle API-Listener-Prozesse
+    for pid in "${API_PIDS[@]}"; do
+        kill "$pid" 2>/dev/null
+    done
     echo "WLAN Scanner stopped."
     exit 0
 }
@@ -24,18 +23,36 @@ nginx -g "daemon off; error_log /dev/stdout info;" &
 NGINX_PID=$!
 
 echo "Starte API-Listener..."
-# API für Scan-Trigger auf Port 8888
-(while true; do socat TCP-LISTEN:8888,fork,reuseaddr EXEC:'/bin/bash -c "echo -e \"HTTP/1.1 200 OK\\r\\n\" && touch /tmp/scan_now"'; done) &
-SOCAT_SCAN_PID=$!
+# Jede API wird jetzt in einer eigenen Funktion gestartet, das ist übersichtlicher.
 
-# API zum Starten der Konfiguration auf Port 8889 (empfängt POST-Daten)
-(while true; do socat TCP-LISTEN:8889,fork,reuseaddr EXEC:'/bin/bash -c "echo -e \"HTTP/1.1 200 OK\\r\\n\" && > /data/progress.log && read -r -d \"\" body && echo \"$body\" > /data/task.json && touch /tmp/configure_now"'; done) &
-SOCAT_CONFIGURE_PID=$!
+# API für Scan-Trigger auf Port 8888
+start_scan_api() {
+    while true; do
+        ncat -l 8888 -c 'echo -e "HTTP/1.1 204 No Content\r\n\r\n" && touch /tmp/scan_now'
+    done
+}
+
+# API zum Starten der Konfiguration auf Port 8889
+start_configure_api() {
+    while true; do
+        ncat -l 8889 -c 'echo -e "HTTP/1.1 204 No Content\r\n\r\n" && > /data/progress.log && cat > /data/task.json && touch /tmp/configure_now'
+    done
+}
 
 # API zum Abfragen des Fortschritts auf Port 8890
-(while true; do socat TCP-LISTEN:8890,fork,reuseaddr EXEC:'/bin/bash -c "echo -e \"HTTP/1.1 200 OK\\r\\nContent-Type: text/plain\\r\\n\" && cat /data/progress.log 2>/dev/null"'; done) &
-SOCAT_PROGRESS_PID=$!
+start_progress_api() {
+    while true; do
+        ncat -l 8890 -c 'echo -e "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n" && cat /data/progress.log 2>/dev/null'
+    done
+}
 
+# Starte alle API-Listener im Hintergrund und sammle ihre PIDs
+start_scan_api &
+API_PIDS+=($!)
+start_configure_api &
+API_PIDS+=($!)
+start_progress_api &
+API_PIDS+=($!)
 
 # --- Konfiguration & Start ---
 CONFIG_PATH=/data/options.json
@@ -51,7 +68,7 @@ if ! ip link show "${INTERFACE}" > /dev/null 2>&1; then
 fi
 echo "Interface '${INTERFACE}' gefunden. Starte die Schleife."
 
-# --- Hauptschleife ---
+# --- Hauptschleife (bleibt unverändert) ---
 while true; do
     if [ -f /tmp/configure_now ]; then
         echo "Konfigurations-Trigger erkannt! Starte Konfigurations-Skript im Hintergrund."
