@@ -13,7 +13,7 @@ RUN apk update && apk add --no-cache \
     rm -rf /var/cache/apk/*
 
 # Kopiere unsere Nginx-Konfiguration an den richtigen Ort im Container
-COPY nginx/nginx.conf /etc/nginx/nginx.conf
+COPY nginx/ingress.conf /etc/nginx/http.d/ingress.conf
 
 # Kopiere die Web-Dateien
 COPY rootfs/ /
