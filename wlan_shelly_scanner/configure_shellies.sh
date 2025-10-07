@@ -5,11 +5,21 @@ main() {
     TASK_FILE="/data/task.json"
     CONFIG_PATH=/data/options.json
 
-    INTERFACE=$(jq --raw-output '.interface // "wlan0"' "$CONFIG_PATH")
-
     log() {
         echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" | tee -a "$LOG_FILE"
     }
+
+    # HIER DIE KORREKTUR: Finde den exakten Pfad zu nmcli beim Start
+    NMCLI_PATH=$(find / -name "nmcli" -type f 2>/dev/null | head -n 1)
+
+    if [ -z "$NMCLI_PATH" ]; then
+        log "FATALER FEHLER: nmcli konnte im Container nicht gefunden werden."
+        exit 1
+    fi
+    log "nmcli gefunden unter: $NMCLI_PATH"
+
+
+    INTERFACE=$(jq --raw-output '.interface // "wlan0"' "$CONFIG_PATH")
 
     log "Starte Konfigurationsprozess auf Interface: $INTERFACE"
 
@@ -28,7 +38,8 @@ main() {
         
         log "Versuche, mit dem Shelly-Hotspot zu verbinden..."
         
-        if nmcli device wifi connect "$shelly_ssid" ifname "$INTERFACE" --timeout 30; then
+        # Verwende den gefundenen Pfad $NMCLI_PATH
+        if $NMCLI_PATH device wifi connect "$shelly_ssid" ifname "$INTERFACE" --timeout 30; then
             log "Erfolgreich mit '$shelly_ssid' verbunden."
             sleep 5
             
@@ -47,9 +58,10 @@ main() {
             fi
             
             log "Trenne Verbindung zum Shelly-Hotspot..."
-            CONNECTION_UUID=$(nmcli -g UUID,TYPE connection show --active | grep wifi | cut -d':' -f1)
+            # Verwende den gefundenen Pfad $NMCLI_PATH
+            CONNECTION_UUID=$($NMCLI_PATH -g UUID,TYPE connection show --active | grep wifi | cut -d':' -f1)
             if [ -n "$CONNECTION_UUID" ]; then
-                nmcli connection delete uuid "$CONNECTION_UUID" || log "Warnung: Temporäre Verbindung konnte nicht gelöscht werden."
+                $NMCLI_PATH connection delete uuid "$CONNECTION_UUID" || log "Warnung: Temporäre Verbindung konnte nicht gelöscht werden."
             else
                 log "Warnung: Aktive WLAN-Verbindung zum Löschen nicht gefunden."
             fi
