@@ -1,4 +1,4 @@
-ARG BUILD_from
+ARG BUILD_FROM
 FROM $BUILD_FROM
 
 LABEL Ihr Name <IhreEmail@example.com>
