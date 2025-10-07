@@ -14,7 +14,7 @@ echo "WLAN Scanner Add-on wird gestartet!"
 
 # Starte den Nginx Webserver im Hintergrund
 echo "Starte Webserver..."
-nginx -g "daemon off;" &
+nginx -g "daemon off; error_log /dev/stdout info;" &
 
 # Lies die Konfiguration aus der options.json von Home Assistant
 CONFIG_PATH=/data/options.json
