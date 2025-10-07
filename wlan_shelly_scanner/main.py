@@ -1,3 +1,4 @@
+#!/usr/bin/with-contenv sh
 #!/usr/bin/env python3
 import os
 import sys
