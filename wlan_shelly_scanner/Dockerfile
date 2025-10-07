@@ -30,3 +30,7 @@ RUN chmod a+x \
     /configure_shellies.py \
     /api_server.py \
     /etc/services.d/app/run
+
+# --- FÜGEN SIE DIESE ZEILE HINZU ---
+# Final version, forcing cache invalidation
+# ------------------------------------
