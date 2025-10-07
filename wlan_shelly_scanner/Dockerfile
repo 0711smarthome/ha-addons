@@ -16,9 +16,9 @@ RUN apk add --no-cache \
     nmap-ncat \
     curl \
     util-linux && \
-    pip install homeassistant-api
+    pip install --break-system-packages homeassistant-api
 
-# ... Rest des Dockerfiles bleibt gleich ...
+# ENTFERNE die Standard-Nginx-Seite, um Konflikte zu vermeiden
 RUN rm -f /etc/nginx/http.d/default.conf
 
 COPY nginx/ingress.conf /etc/nginx/http.d/ingress.conf
