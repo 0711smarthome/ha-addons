@@ -5,6 +5,7 @@ LABEL Ihr Name <IhreEmail@example.com>
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
+# Wir brauchen kein nmap-ncat mehr
 RUN apk add --no-cache \
     python3 \
     py3-aiohttp \
@@ -12,25 +13,16 @@ RUN apk add --no-cache \
     iw \
     jq \
     bash \
-    nmap-ncat \
     curl \
     util-linux
 
 RUN rm -f /etc/nginx/http.d/default.conf
 COPY nginx/ingress.conf /etc/nginx/http.d/ingress.conf
-
-# Dieser Befehl kopiert die korrekte rootfs-Struktur
 COPY rootfs/ /
 
-COPY configure_shellies.py /configure_shellies.py
-COPY api_server.py /api_server.py
+# Nur noch eine Python-Datei kopieren
+COPY main.py /main.py
+RUN chmod a+x /main.py
 
-# Mache die Skripte und die neue S6-run-Datei ausführbar
-RUN chmod a+x \
-    /configure_shellies.py \
-    /api_server.py \
-    /etc/services.d/app/run
-
-# --- FÜGEN SIE DIESE ZEILE HINZU ---
-# Final version, forcing cache invalidation
-# ------------------------------------
+# Starte das zentrale Python-Skript als Hauptprozess
+CMD [ "python3", "/main.py" ]
