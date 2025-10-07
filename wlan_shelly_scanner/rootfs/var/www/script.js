@@ -26,11 +26,10 @@ async function triggerScan() {
     const wifiListDiv = document.getElementById('wifiList');
     wifiListDiv.innerHTML = '<p>Manueller Scan gestartet, bitte warten...</p>';
     try {
-        // Sende die Anfrage an unsere API, um den Scan auszulösen
-        await fetch('/api/scan');
+        // HIER DIE KORREKTUR: Führender Schrägstrich entfernt
+        await fetch('api/scan');
         
-        // Gib dem Backend einen Moment Zeit, den Scan durchzuführen und die Datei zu schreiben
-        setTimeout(loadWifiNetworks, 2000); // Warte 2 Sekunden, dann lade die Liste neu
+        setTimeout(loadWifiNetworks, 2000);
     } catch (error) {
         wifiListDiv.innerHTML = `<p class="error-message">Fehler beim Auslösen des Scans: ${error.message}</p>`;
         console.error("Fehler beim Auslösen des Scans:", error);
@@ -45,14 +44,14 @@ async function loadWifiNetworks() {
     wifiListDiv.innerHTML = '<p>Suche nach WLAN-Netzwerken...</p>';
 
     try {
-        // Zeitstempel angehängt, um Caching zu umgehen
+        // Dieser Aufruf war bereits korrekt (ohne führenden Schrägstrich)
         const response = await fetch('wifi_list.json?' + new Date().getTime());
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
         const ssids = await response.json();
-
-        // Sortiere die SSIDs: Zuerst die "shelly" Netzwerke, dann die anderen
+        
+        // ... Rest der Funktion bleibt unverändert ...
         ssids.sort((a, b) => {
             const aIsShelly = a.toLowerCase().includes('shelly');
             const bIsShelly = b.toLowerCase().includes('shelly');
@@ -60,34 +59,27 @@ async function loadWifiNetworks() {
             if (!aIsShelly && bIsShelly) return 1;
             return a.localeCompare(b);
         });
-
         wifiListDiv.innerHTML = ''; 
-
         if (ssids.length === 0) {
             wifiListDiv.innerHTML = '<p>Keine WLAN-Netzwerke gefunden.</p>';
             return;
         }
-
         ssids.forEach(ssid => {
             const isShelly = ssid.toLowerCase().includes('shelly');
-            
             const itemDiv = document.createElement('div');
             itemDiv.className = 'wifi-item';
             if (!isShelly) {
                 itemDiv.classList.add('disabled');
             }
-
             const checkbox = document.createElement('input');
             checkbox.type = 'checkbox';
             checkbox.id = ssid;
             checkbox.name = 'selected_shelly';
             checkbox.value = ssid;
             checkbox.disabled = !isShelly;
-
             const label = document.createElement('label');
             label.htmlFor = ssid;
             label.textContent = ssid;
-            
             label.prepend(checkbox);
             itemDiv.appendChild(label);
             wifiListDiv.appendChild(itemDiv);
@@ -105,17 +97,15 @@ async function loadWifiNetworks() {
 async function updateProgress() {
     const logOutput = document.getElementById('logOutput');
     try {
-        // Zeitstempel angehängt, um Caching zu umgehen
-        const response = await fetch('/api/progress?' + new Date().getTime());
+        // HIER DIE KORREKTUR: Führender Schrägstrich entfernt
+        const response = await fetch('api/progress?' + new Date().getTime());
         const progressText = await response.text();
         logOutput.textContent = progressText;
-        // Scrolle die Box automatisch nach unten
         logOutput.scrollTop = logOutput.scrollHeight;
         
-        // Stoppe das Polling, wenn das Log-File das Ende anzeigt
         if (progressText.includes("abgeschlossen")) {
             clearInterval(progressInterval);
-            document.querySelector('#wifiForm button[type="submit"]').disabled = false; // Button wieder aktivieren
+            document.querySelector('#wifiForm button[type="submit"]').disabled = false;
         }
     } catch (error) {
         logOutput.textContent += "\nFehler beim Abrufen des Fortschritts.";
@@ -130,7 +120,6 @@ async function updateProgress() {
 document.getElementById('wifiForm').addEventListener('submit', async function(event) {
     event.preventDefault(); 
     
-    // Stoppe eventuell laufendes altes Polling
     if (progressInterval) {
         clearInterval(progressInterval);
     }
@@ -144,13 +133,11 @@ document.getElementById('wifiForm').addEventListener('submit', async function(ev
         return;
     }
 
-    // Zeige den Log-Bereich an und deaktiviere den Button
     const progressArea = document.getElementById('progressArea');
     progressArea.style.display = 'block';
     document.getElementById('logOutput').textContent = 'Initialisiere Konfiguration...';
     document.querySelector('#wifiForm button[type="submit"]').disabled = true;
 
-    // Bereite die Daten für den POST-Request vor
     const taskData = {
         selectedShellies,
         userSsid,
@@ -158,15 +145,14 @@ document.getElementById('wifiForm').addEventListener('submit', async function(ev
     };
 
     try {
-        // Sende die Aufgabe an das Backend
-        await fetch('/api/configure', {
+        // HIER DIE KORREKTUR: Führender Schrägstrich entfernt
+        await fetch('api/configure', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(taskData)
         });
 
-        // Starte das Polling, um den Fortschritt abzufragen
-        progressInterval = setInterval(updateProgress, 2000); // Alle 2 Sekunden
+        progressInterval = setInterval(updateProgress, 2000);
 
     } catch (error) {
         document.getElementById('logOutput').textContent = 'FEHLER beim Starten der Konfiguration: ' + error.message;
