@@ -1,6 +1,6 @@
 {
   "name": "WLAN Scanner",
-  "version": "1.5.1",
+  "version": "1.5.2",
   "slug": "wifi_scanner",
   "description": "Sucht periodisch nach WLAN-Netzwerken und gibt sie im Log aus.",
   "arch": [
