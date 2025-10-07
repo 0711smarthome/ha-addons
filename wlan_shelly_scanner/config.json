@@ -1,6 +1,6 @@
 {
   "name": "WLAN Scanner",
-  "version": "2.5.3",
+  "version": "2.5.4",
   "slug": "wifi_scanner",
   "description": "Sucht und konfiguriert Shelly-WLAN-Netzwerke.",
   "arch": [ "aarch64", "amd64", "armhf", "armv7", "i386" ],
@@ -8,10 +8,10 @@
   "boot": "auto",
   "init": false,
   "host_network": true,
-  "privileged": [
-    "NET_ADMIN",
-    "NET_RAW"
-  ],
+  "hassio_api": true,
+  "hassio_role": "manager",
+  "privileged": true,
+  "dbus": true,
   "ingress": true,
   "ingress_port": 80,
   "panel_icon": "mdi:wifi-search",
