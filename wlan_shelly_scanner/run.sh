@@ -17,41 +17,21 @@ echo "WLAN Scanner Add-on wird gestartet!"
 nginx -g "daemon off; error_log /dev/stdout info;" &
 NGINX_PID=$!
 
-echo "Starte API-Listener..."
-(while true; do ncat -l 8888 -c 'echo -e "HTTP/1.1 204 No Content\r\n\r\n" && touch /tmp/scan_now'; done) &
+# --- ÄNDERUNG HIER ---
+echo "Starte Python API-Server..."
+# Starte den Server und leite seine gesamte Ausgabe (stdout & stderr) in eine eigene Log-Datei um.
+python3 /api_server.py > /data/api_server.log 2>&1 &
 API_PIDS+=($!)
-# Ersetze den vorherigen ncat-Block für Port 8889 hiermit:
-(while true; do 
-    ncat -l 8889 --keep-open -c '
-        # Schritt 1: Lese den gesamten Request-Body in eine temporäre Datei.
-        # cat liest die Standardeingabe (die Netzwerkverbindung), bis sie geschlossen wird.
-        BODY_TEMP_FILE=$(mktemp)
-        cat > "$BODY_TEMP_FILE"
 
-        # Schritt 2: Sende die Antwort an den Browser.
-        # Der Body ist jetzt sicher gespeichert, wir können antworten.
-        echo -e "HTTP/1.1 202 Accepted\r\n\r\n"
-        
-        # Schritt 3: Verarbeite die gespeicherte Datei im Hintergrund.
-        (
-            # Entferne die HTTP-Header aus der gespeicherten Body-Datei
-            sed "1,/\r\$/d" "$BODY_TEMP_FILE" > /data/task.json
-            
-            # Lösche die temporäre Body-Datei
-            rm "$BODY_TEMP_FILE"
-            
-            # Erstelle die Trigger-Datei
-            touch /tmp/configure_now
-        ) &
-    '
-done) &
-API_PIDS+=($!)
-(while true; do ncat -l 8890 -c 'echo -e "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\n" && cat /data/progress.log 2>/dev/null'; done) &
-API_PIDS+=($!)
+echo "Warte 2 Sekunden, damit der API-Server vollständig initialisiert ist..."
+sleep 2
+# --- ENDE DER ÄNDERUNG ---
+
 
 CONFIG_PATH=/data/options.json
 INTERFACE=$(jq --raw-output '.interface // "wlan0"' $CONFIG_PATH)
 INTERVAL=$(jq --raw-output '.scan_interval // 60' $CONFIG_PATH)
+
 
 echo "Verwende Interface: ${INTERFACE}"
 echo "Prüfe, ob das Interface '${INTERFACE}' existiert..."
