@@ -1,13 +1,9 @@
-#!/usr/bin/env bash
-set -e
+#!/usr/bin/with-contenv bash
+# ^-- WICHTIG: Benutze diesen speziellen Shebang für S6
 
-# --- SCHRITT 1: TOKEN SOFORT BEI SKRIPTSTART SICHERN ---
-echo "WLAN Scanner: Capturing SUPERVISOR_TOKEN at startup..."
-# Wir schreiben den Inhalt der Variable in eine temporäre Datei.
-echo $SUPERVISOR_TOKEN
-echo "$SUPERVISOR_TOKEN" > /tmp/supervisor_token
-echo "WLAN Scanner: Token captured."
-# --------------------------------------------------------
+# Der Rest des Skripts ist fast identisch.
+# Wir brauchen den Workaround mit der Datei nicht mehr, da S6 den Token bereitstellt.
+set -e
 
 NGINX_PID=
 API_PIDS=()
@@ -16,8 +12,6 @@ term_handler(){
     echo "Stopping background services..."
     if [ -n "${NGINX_PID}" ]; then kill "${NGINX_PID}"; fi
     for pid in "${API_PIDS[@]}"; do kill "$pid" 2>/dev/null; done
-    # Bereinigen der Token-Datei beim Stoppen
-    if [ -f /tmp/supervisor_token ]; then rm /tmp/supervisor_token; fi
     echo "WLAN Scanner stopped."
     exit 0
 }
@@ -48,17 +42,10 @@ while true; do
         echo "Konfigurations-Trigger erkannt! Starte Python-Konfigurations-Skript."
         rm /tmp/configure_now
         
-        # --- SCHRITT 2: TOKEN VOR GEBRAUCH AUS DER DATEI LESEN ---
-        echo "Reading token from file..."
-        TOKEN_FROM_FILE=$(cat /tmp/supervisor_token)
-        
-        # DEBUG-Zeile, um zu sehen, ob das Lesen geklappt hat
-        echo "DEBUG: Token from file has length: ${#TOKEN_FROM_FILE}"
-
-        # Wir übergeben den aus der Datei gelesenen Token an das Skript
-        /configure_shellies.py "$TOKEN_FROM_FILE" &
-        # -------------------------------------------------------------
+        # S6 stellt den Token zuverlässig bereit. Wir können ihn wieder direkt verwenden.
+        /configure_shellies.py "$SUPERVISOR_TOKEN" &
     fi
+    # ... (Rest der while-Schleife bleibt wie gehabt)
     echo "Suche nach WLAN-Netzwerken..."
     SCAN_OUTPUT=$(iw dev "${INTERFACE}" scan 2>&1)
     EXIT_CODE=$?

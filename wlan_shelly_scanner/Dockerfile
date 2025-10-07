@@ -18,16 +18,18 @@ RUN apk add --no-cache \
 
 RUN rm -f /etc/nginx/http.d/default.conf
 COPY nginx/ingress.conf /etc/nginx/http.d/ingress.conf
+
+# Dieser Befehl kopiert jetzt auch unsere neue S6-Service-Definition
 COPY rootfs/ /
-COPY run.sh /run.sh
+
 COPY configure_shellies.py /configure_shellies.py
-# --- FÜGE DIESE ZEILEN HINZU ---
 COPY api_server.py /api_server.py
-RUN chmod a+x /run.sh /configure_shellies.py /api_server.py
-# -----------------------------
 
-# --- ÄNDERE DIESE ZEILE (um die alte chmod zu ersetzen) ---
-# RUN chmod a+x /run.sh /configure_shellies.py 
-# wurde bereits oben ersetzt
+# Mache die Skripte und die neue S6-run-Datei ausführbar
+RUN chmod a+x \
+    /configure_shellies.py \
+    /api_server.py \
+    /etc/services.d/app/run
 
-CMD [ "/run.sh" ]
+# ENTFERNE das CMD-Kommando. S6 übernimmt die Kontrolle.
+# CMD [ "/run.sh" ]
