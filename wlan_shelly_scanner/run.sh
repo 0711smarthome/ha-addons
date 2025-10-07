@@ -20,7 +20,25 @@ NGINX_PID=$!
 echo "Starte API-Listener..."
 (while true; do ncat -l 8888 -c 'echo -e "HTTP/1.1 204 No Content\r\n\r\n" && touch /tmp/scan_now'; done) &
 API_PIDS+=($!)
-(while true; do ncat -l 8889 --keep-open -c 'exec /bin/bash -c "sed '\''1,/^\r$/d'\'' > /data/task.json && touch /tmp/configure_now && echo -e \"HTTP/1.1 204 No Content\r\n\r\n\""'; done) &
+(while true; do 
+    ncat -l 8889 --keep-open -c '
+        # Sendet sofort eine "Accepted"-Antwort an den Browser
+        echo -e "HTTP/1.1 202 Accepted\r\n\r\n"
+        
+        # Führt die eigentliche Arbeit im Hintergrund aus
+        (
+            TEMP_FILE=$(mktemp)
+            # Liest den Request-Body in eine temporäre Datei
+            sed "1,/\r$/d" > "$TEMP_FILE"
+            
+            # Verschiebt die temporäre Datei atomar an den Zielort
+            mv "$TEMP_FILE" /data/task.json
+            
+            # Erstellt die Trigger-Datei
+            touch /tmp/configure_now
+        ) &
+    '
+done) &
 API_PIDS+=($!)
 (while true; do ncat -l 8890 -c 'echo -e "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\n" && cat /data/progress.log 2>/dev/null'; done) &
 API_PIDS+=($!)
