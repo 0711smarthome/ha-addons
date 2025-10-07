@@ -3,21 +3,15 @@ FROM $BUILD_FROM
 
 LABEL Ihr Name <IhreEmail@example.com>
 
-# Dieses Argument zwingt Docker, die RUN-Zeile neu auszuführen
-ARG CACHE_BUSTER=none
-
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
-# Wir löschen den apk-Cache und installieren dann alles in einem Schritt
-# Das stellt sicher, dass alles frisch heruntergeladen wird.
-RUN rm -rf /var/cache/apk/* && \
-    apk update && apk add --no-cache \
+# Wir brauchen networkmanager NICHT. Die ha CLI ist der richtige Weg.
+RUN apk update && apk add --no-cache \
     nginx \
     iw \
     jq \
     bash \
     nmap-ncat \
-    networkmanager \
     curl \
     util-linux
 
