@@ -2,9 +2,9 @@
 set -e
 
 # --- Prozess- und Signal-Management ---
+# (Dieser Teil bleibt unverändert)
 NGINX_PID=
 API_PIDS=()
-
 term_handler(){
     echo "Stopping background services..."
     if [ -n "${NGINX_PID}" ]; then kill "${NGINX_PID}"; fi
@@ -14,38 +14,52 @@ term_handler(){
 }
 trap 'term_handler' SIGTERM
 
+
 # --- Start der Hintergrunddienste ---
 echo "WLAN Scanner Add-on wird gestartet!"
+
+# +++ NEUER DEBUGGING-BLOCK +++
+echo "--- DEBUGGING START ---"
+echo "Prüfe, ob 'nmcli' existiert und ausführbar ist..."
+if command -v nmcli &> /dev/null; then
+    echo "SUCCESS: 'nmcli' wurde im PATH gefunden."
+    echo "Pfad: $(which nmcli)"
+    echo "Datei-Details: $(ls -l $(which nmcli))"
+else
+    echo "!!!!!!!!!! FEHLER: 'nmcli' wurde NICHT im PATH gefunden. !!!!!!!!!!"
+    echo "Das 'networkmanager' Paket wurde beim Rebuild wahrscheinlich nicht korrekt installiert."
+fi
+echo "System PATH ist: $PATH"
+echo "--- DEBUGGING END ---"
+# +++ ENDE DEBUGGING-BLOCK +++
+
 nginx -g "daemon off; error_log /dev/stdout info;" &
 NGINX_PID=$!
-
 echo "Starte API-Listener..."
-# API für Scan-Trigger auf Port 8888
-(while true; do ncat -l 8888 -c 'echo -e "HTTP/1.1 204 No Content\r\n\r\n" && touch /tmp/scan_now'; done) &
+# (Der Rest des Skripts bleibt unverändert)
+start_scan_api() {
+    while true; do ncat -l 8888 -c 'echo -e "HTTP/1.1 204 No Content\r\n\r\n" && touch /tmp/scan_now'; done
+}
+start_configure_api() {
+    while true; do ncat -l 8889 --keep-open -c 'exec /bin/bash -c " > /data/progress.log && sed '\''1,/^\r$/d'\'' > /data/task.json && touch /tmp/configure_now && echo -e \"HTTP/1.1 204 No Content\r\n\r\n\""'; done
+}
+start_progress_api() {
+    while true; do ncat -l 8890 -c 'echo -e "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\n" && cat /data/progress.log 2>/dev/null'; done
+}
+start_scan_api &
 API_PIDS+=($!)
-
-# API zum Starten der Konfiguration auf Port 8889
-# HIER DIE KORREKTUR: "sed" entfernt die HTTP-Header, bevor in die Datei geschrieben wird.
-(while true; do ncat -l 8889 --keep-open -c 'exec /bin/bash -c " > /data/progress.log && sed '\''1,/^\r$/d'\'' > /data/task.json && touch /tmp/configure_now && echo -e \"HTTP/1.1 204 No Content\r\n\r\n\""'; done) &
+start_configure_api &
 API_PIDS+=($!)
-
-# API zum Abfragen des Fortschritts auf Port 8890
-(while true; do ncat -l 8890 -c 'echo -e "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\n" && cat /data/progress.log 2>/dev/null'; done) &
+start_progress_api &
 API_PIDS+=($!)
-
-# --- Konfiguration & Start ---
 CONFIG_PATH=/data/options.json
 INTERFACE=$(jq --raw-output '.interface // "wlan0"' $CONFIG_PATH)
 INTERVAL=$(jq --raw-output '.scan_interval // 60' $CONFIG_PATH)
-
 echo "Verwende Interface: ${INTERFACE}"
 echo "Scan-Intervall: ${INTERVAL} Sekunden"
-# ... Rest des Skripts bleibt unverändert ...
 echo "Prüfe, ob das Interface '${INTERFACE}' existiert..."
 if ! ip link show "${INTERFACE}" > /dev/null 2>&1; then echo "FEHLER: Interface nicht gefunden."; exit 1; fi
 echo "Interface '${INTERFACE}' gefunden. Starte die Schleife."
-
-# --- Hauptschleife ---
 while true; do
     if [ -f /tmp/configure_now ]; then
         echo "Konfigurations-Trigger erkannt! Starte Konfigurations-Skript im Hintergrund."
