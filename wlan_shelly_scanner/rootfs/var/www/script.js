@@ -1,3 +1,18 @@
+async function triggerScan() {
+    const wifiListDiv = document.getElementById('wifiList');
+    wifiListDiv.innerHTML = '<p>Manueller Scan gestartet, bitte warten...</p>';
+    try {
+        // Sende die Anfrage an unsere API, um den Scan auszulösen
+        await fetch('/api/scan');
+        
+        // Gib dem Backend einen Moment Zeit, den Scan durchzuführen und die Datei zu schreiben
+        setTimeout(loadWifiNetworks, 2000); // Warte 2 Sekunden, dann lade die Liste neu
+    } catch (error) {
+        wifiListDiv.innerHTML = `<p class="error-message">Fehler beim Auslösen des Scans: ${error.message}</p>`;
+        console.error("Fehler beim Auslösen des Scans:", error);
+    }
+}
+
 const HARDCODED_PIN = "0711";
 
 // Funktion zur Überprüfung der PIN

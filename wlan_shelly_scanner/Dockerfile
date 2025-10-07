@@ -1,3 +1,4 @@
+# Dockerfile
 ARG BUILD_FROM
 FROM $BUILD_FROM
 
@@ -5,11 +6,13 @@ LABEL Ihr Name <IhreEmail@example.com>
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
+# Füge socat für unsere kleine API hinzu
 RUN apk update && apk add --no-cache \
     nginx \
     iw \
     jq \
-    bash && \
+    bash \
+    socat && \
     rm -rf /var/cache/apk/*
 
 # ENTFERNE die Standard-Nginx-Seite, um Konflikte zu vermeiden

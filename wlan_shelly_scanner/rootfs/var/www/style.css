@@ -97,3 +97,12 @@ hr {
     border-top: 1px solid #eee;
     margin: 25px 0;
 }
+
+.scan-button {
+    background-color: #4CAF50; /* Grün */
+    margin-bottom: 15px;
+}
+
+.scan-button:hover {
+    background-color: #45a049;
+}
