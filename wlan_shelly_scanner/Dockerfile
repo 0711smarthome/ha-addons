@@ -10,6 +10,7 @@ RUN apk update && apk add --no-cache \
     py3-aiohttp \
     nginx \
     networkmanager \
+    networkmanager-cli \
     jq \
     bash \
     curl \
