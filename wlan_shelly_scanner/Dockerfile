@@ -15,8 +15,7 @@ RUN apk update && apk add --no-cache \
     curl \
     util-linux \
     wpa_supplicant \
-    # FEHLTE: dbus muss für dbus-daemon installiert werden
-    dbus
+    dbus 
 
 RUN rm -f /etc/nginx/http.d/default.conf
 COPY nginx/ingress.conf /etc/nginx/http.d/ingress.conf
