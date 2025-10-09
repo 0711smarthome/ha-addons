@@ -11,9 +11,12 @@ import aiohttp
 from aiohttp import web
 import fcntl
 
+print("==== ENVIRONMENT ====")
+for key, val in os.environ.items():
+    if "SUPERVISOR" in key or "HASS" in key:
+        print(f"{key}={val}")
+print("======================")
 
-log(f"DEBUG ENV: SUPERVISOR={os.environ.get('SUPERVISOR')}")
-log(f"DEBUG ENV: HASSIO_TOKEN={os.environ.get('HASSIO_TOKEN')}")
 
 # --- Alle Konstanten an einem Ort ---
 LOG_FILE = "/data/progress.log"
