@@ -14,7 +14,8 @@ RUN apk add --no-cache \
     jq \
     bash \
     curl \
-    util-linux
+    util-linux \
+    networkmanager  
 
 RUN rm -f /etc/nginx/http.d/default.conf
 COPY nginx/ingress.conf /etc/nginx/http.d/ingress.conf

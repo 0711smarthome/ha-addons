@@ -57,12 +57,30 @@ async def supervisor_api_request(session, method, url, data=None):
         return None
 
 # --- Konfigurations-Logik (aus configure_shellies.py) ---
+# main.py
+
+# Hilfsfunktion, um externe Befehle auszuführen und zu loggen
+async def run_command(cmd):
+    log(f"Führe aus: {' '.join(cmd)}")
+    proc = await asyncio.create_subprocess_exec(*cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    stdout, stderr = await proc.communicate()
+    
+    stdout_str = stdout.decode('utf-8').strip()
+    stderr_str = stderr.decode('utf-8').strip()
+    
+    if stdout_str:
+        log(f"Ausgabe: {stdout_str}")
+    if stderr_str:
+        log(f"Fehler-Ausgabe: {stderr_str}")
+        
+    return proc.returncode == 0
+
 async def run_configuration_logic():
     lock_file_path = '/tmp/configure.lock'
     try:
         with open(lock_file_path, 'w') as lf:
             fcntl.flock(lf, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            with open(LOG_FILE, 'w') as f: f.write('')
+            with open(LOG_FILE, 'w') as f: f.write('') # Log leeren
             log("Konfigurationsprozess gestartet...")
 
             with open(TASK_FILE, 'r') as f: task = json.load(f)
@@ -70,67 +88,117 @@ async def run_configuration_logic():
             
             selected_shellies = task.get("selectedShellies", [])
             user_ssid = task.get("userSsid", "")
+            user_password = task.get("userPassword", "") # Passwort auslesen
             interface = config.get("interface", "wlan0")
 
             if not user_ssid or not selected_shellies:
-                log("FEHLER: Ungültige Aufgabendaten.")
+                log("FEHLER: Ungültige Aufgabendaten. SSID oder Shelly-Liste fehlt.")
                 return
 
-            async with aiohttp.ClientSession() as session:
-                for shelly_ssid in selected_shellies:
-                    log(f"--- Bearbeite: {shelly_ssid} ---")
-                    options = {"wifi": {"ssid": shelly_ssid, "auth": "open"}}
-                    api_url = f"http://supervisor/network/interface/{interface}/accesspoints"
-                    if not await supervisor_api_request(session, 'post', api_url, options):
-                         log(f"FEHLER beim Senden des Verbindungs-Befehls für {shelly_ssid}.")
-                         continue
-                    log(f"Verbindung zu {shelly_ssid} erfolgreich beauftragt.")
-            
+            # WICHTIG: NetworkManager muss laufen
+            await run_command(["nmcli", "radio", "wifi", "on"])
+
+            for shelly_ssid in selected_shellies:
+                log(f"--- Bearbeite: {shelly_ssid} ---")
+                
+                # 1. Mit dem offenen Shelly WLAN verbinden
+                log(f"Versuche Verbindung zu {shelly_ssid}...")
+                # Wir löschen alte Verbindungen mit diesem Namen, falls vorhanden
+                await run_command(["nmcli", "connection", "delete", shelly_ssid]) 
+                connect_success = await run_command([
+                    "nmcli", "device", "wifi", "connect", shelly_ssid, 
+                    "name", shelly_ssid, # Gib der Verbindung denselben Namen wie der SSID
+                    "ifname", interface
+                ])
+
+                if not connect_success:
+                    log(f"FEHLER: Konnte keine Verbindung zu {shelly_ssid} herstellen. Überspringe.")
+                    continue
+                
+                # Kurze Pause, damit der DHCP-Server des Shelly eine IP zuweisen kann
+                await asyncio.sleep(10)
+
+                # 2. HTTP-Befehl an den Shelly senden
+                # Shellies im AP-Modus haben immer die IP 192.168.33.1
+                shelly_ip = "192.168.33.1"
+                # URL-encodieren von SSID und Passwort
+                encoded_ssid = quote(user_ssid)
+                encoded_pass = quote(user_password)
+                
+                # Der genaue API-Endpunkt kann je nach Shelly-Firmware variieren.
+                # Dies ist der häufigste für Gen1-Geräte.
+                configure_url = (
+                    f"http://{shelly_ip}/settings/sta?"
+                    f"ssid={encoded_ssid}&"
+                    f"key={encoded_pass}&"
+                    "enabled=1"
+                )
+
+                log(f"Sende Konfigurationsbefehl an {configure_url}")
+                try:
+                    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=20)) as session:
+                        async with session.get(configure_url) as response:
+                            if response.status == 200:
+                                log("Konfigurationsbefehl erfolgreich gesendet.")
+                            else:
+                                log(f"FEHLER: Shelly hat mit Status {response.status} geantwortet.")
+                except Exception as e:
+                    log(f"FEHLER beim Senden des HTTP-Befehls: {e}")
+                
+                finally:
+                    # 3. Verbindung zum Shelly trennen, egal was passiert
+                    log(f"Trenne Verbindung zu {shelly_ssid}...")
+                    await run_command(["nmcli", "connection", "down", shelly_ssid])
+                    await run_command(["nmcli", "connection", "delete", shelly_ssid])
+                    log("Verbindung getrennt.")
+
     except IOError:
-        log("Konfigurationsprozess läuft bereits.")
+        log("Konfigurationsprozess läuft bereits (Lock-Datei vorhanden).")
     except Exception as e:
         log(f"Ein unerwarteter Fehler im Konfigurationsprozess ist aufgetreten: {e}")
     finally:
         log("--- Konfiguration abgeschlossen. ---")
         if os.path.exists(TASK_FILE): os.remove(TASK_FILE)
-
+        
 # --- WLAN-Scan-Schleife (aus run.sh) ---
+# main.py
+
 async def wifi_scan_loop():
-    log("WLAN Scan-Schleife gestartet.")
+    log("WLAN Scan-Dienst gestartet. Warte auf Trigger...")
     config = json.load(open(CONFIG_PATH))
     interface = config.get("interface", "wlan0")
-    interval = config.get("scan_interval", 60)
 
     while True:
-        try:
-            if os.path.exists(CONFIGURE_TRIGGER_FILE):
-                os.remove(CONFIGURE_TRIGGER_FILE)
-                asyncio.create_task(run_configuration_logic())
+        # Warte, bis eine der Trigger-Dateien erscheint
+        while not os.path.exists(SCAN_TRIGGER_FILE) and not os.path.exists(CONFIGURE_TRIGGER_FILE):
+            await asyncio.sleep(1)
 
-            log("Suche nach WLAN-Netzwerken...")
-            cmd = ["iw", "dev", interface, "scan"]
-            proc = await asyncio.create_subprocess_exec(*cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            stdout, stderr = await proc.communicate()
+        # Wenn die Konfiguration getriggert wird, hat diese Vorrang
+        if os.path.exists(CONFIGURE_TRIGGER_FILE):
+            os.remove(CONFIGURE_TRIGGER_FILE)
+            await run_configuration_logic()
+            continue # Gehe zum Anfang der Schleife und warte erneut
 
-            if proc.returncode == 0:
-                log("Scan erfolgreich.")
-                output = stdout.decode('utf-8')
-                ssids = [line.split("SSID: ")[1] for line in output.split('\n') if "SSID: " in line]
-                with open(WIFI_LIST_FILE, 'w') as f:
-                    json.dump(ssids, f)
-            else:
-                log(f"FEHLER: 'iw scan' fehlgeschlagen. Fehler: {stderr.decode('utf-8')}")
+        # Ansonsten führe einen Scan aus
+        if os.path.exists(SCAN_TRIGGER_FILE):
+            os.remove(SCAN_TRIGGER_FILE)
+            log("Manueller Scan getriggert...")
+            try:
+                cmd = ["iw", "dev", interface, "scan"]
+                proc = await asyncio.create_subprocess_exec(*cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                stdout, stderr = await proc.communicate()
 
-            log(f"Warte bis zu {interval} Sekunden...")
-            for _ in range(interval):
-                if os.path.exists(SCAN_TRIGGER_FILE) or os.path.exists(CONFIGURE_TRIGGER_FILE):
-                    if os.path.exists(SCAN_TRIGGER_FILE): os.remove(SCAN_TRIGGER_FILE)
-                    break
-                await asyncio.sleep(1)
-
-        except Exception as e:
-            log(f"Fehler in der Scan-Schleife: {e}")
-            await asyncio.sleep(30) # Bei Fehler länger warten
+                if proc.returncode == 0:
+                    log("Scan erfolgreich.")
+                    output = stdout.decode('utf-8')
+                    # Extrahiere nur SSIDs, die nicht leer sind
+                    ssids = [line.split("SSID: ")[1] for line in output.split('\n') if "SSID: " in line and line.split("SSID: ")[1]]
+                    with open(WIFI_LIST_FILE, 'w') as f:
+                        json.dump(ssids, f)
+                else:
+                    log(f"FEHLER: 'iw scan' fehlgeschlagen. Fehler: {stderr.decode('utf-8')}")
+            except Exception as e:
+                log(f"Fehler während des Scans: {e}")
 
 # --- API-Server-Handler (aus api_server.py) ---
 async def handle_scan(request):
