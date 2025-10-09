@@ -12,12 +12,10 @@ from aiohttp import web
 import fcntl
 import random
 
-print("==== ENVIRONMENT ====")
-for key, val in os.environ.items():
-    if "SUPERVISOR" in key or "HASS" in key:
-        print(f"{key}={val}")
+print("==== NEUSTART ====")
 print("======================")
 
+CONFIGURE_LOCK = asyncio.Lock()
 
 # --- Alle Konstanten an einem Ort ---
 LOG_FILE = "/data/progress.log"
@@ -76,14 +74,19 @@ async def run_command(cmd):
         
     return proc.returncode == 0
 
-async def run_configuration_logic(caller_id="unknown"): # <--- NEUER PARAMETER
-    lock_file_path = '/tmp/configure.lock'
-    log(f"[{caller_id}] Betrete run_configuration_logic...") # <--- NEUES LOG
-    try:
-        with open(lock_file_path, 'w') as lf:
-            fcntl.flock(lf, fcntl.LOCK_EX | fcntl.LOCK_NB)
+# main.py
+
+async def run_configuration_logic(caller_id="unknown"):
+    log(f"[{caller_id}] Versuch, die Konfigurations-Sperre zu bekommen...")
+    
+    async with CONFIGURE_LOCK:
+        log(f"[{caller_id}] Sperre erhalten. Konfigurationsprozess wird jetzt exklusiv ausgeführt.")
+        # Der Code innerhalb dieses Blocks kann nur von einem Task gleichzeitig ausgeführt werden.
+        # Wenn ein anderer Task hier ankommt, wartet er automatisch, bis der erste fertig ist.
+        
+        try:
             with open(LOG_FILE, 'w') as f: f.write('') # Log leeren
-            log(f"[{caller_id}] Konfigurationsprozess gestartet...") # <--- MODIFIZIERTES LOG
+            log(f"[{caller_id}] Konfigurationsprozess gestartet...")
 
             with open(TASK_FILE, 'r') as f: task = json.load(f)
             with open(CONFIG_PATH, 'r') as f: config = json.load(f)
@@ -101,10 +104,9 @@ async def run_configuration_logic(caller_id="unknown"): # <--- NEUER PARAMETER
 
             for shelly_ssid in selected_shellies:
                 log(f"[{caller_id}] --- Bearbeite: {shelly_ssid} ---")
-                
-                # ... (Rest der for-Schleife bleibt logisch gleich, wir könnten hier auch noch IDs hinzufügen) ...
-                # ... aus Gründen der Übersichtlichkeit lassen wir das erstmal weg ...
                 log(f"[{caller_id}] Versuche Verbindung zu {shelly_ssid}...")
+                
+                # ... (der Rest deiner nmcli und aiohttp Logik bleibt hier 1:1 gleich) ...
                 await run_command(["nmcli", "connection", "delete", shelly_ssid])
                 connect_success = await run_command([
                     "nmcli", "device", "wifi", "connect", shelly_ssid, 
@@ -138,14 +140,13 @@ async def run_configuration_logic(caller_id="unknown"): # <--- NEUER PARAMETER
                     await run_command(["nmcli", "connection", "down", shelly_ssid])
                     await run_command(["nmcli", "connection", "delete", shelly_ssid])
                     log(f"[{caller_id}] Verbindung getrennt.")
-
-    except IOError:
-        log(f"[{caller_id}] Konfigurationsprozess läuft bereits (Lock-Datei vorhanden).") # <--- MODIFIZIERTES LOG
-    except Exception as e:
-        log(f"[{caller_id}] Ein unerwarteter Fehler ist aufgetreten: {e}")
-    finally:
-        log(f"[{caller_id}] --- Konfiguration abgeschlossen. ---") # <--- MODIFIZIERTES LOG
-        if os.path.exists(TASK_FILE): os.remove(TASK_FILE)
+        
+        except Exception as e:
+            log(f"[{caller_id}] Ein unerwarteter Fehler ist aufgetreten: {e}")
+        finally:
+            log(f"[{caller_id}] --- Konfiguration abgeschlossen. ---")
+            if os.path.exists(TASK_FILE): os.remove(TASK_FILE)
+            log(f"[{caller_id}] Sperre wird freigegeben.")
 
 # --- WLAN-Scan-Schleife (aus run.sh) ---
 # main.py
@@ -222,7 +223,7 @@ async def start_background_tasks(app):
     app['wifi_scanner'] = asyncio.create_task(wifi_scan_loop())
 
 async def main_startup():
-    log(".....................................................................................................Add-on wird gestartet.......................................................................................................")
+    log(".........................................Add-on wird gestartet.........................................")
 
     if not os.path.exists(WIFI_LIST_FILE):
         log("wifi_list.json nicht gefunden, erstelle eine leere Datei.")
