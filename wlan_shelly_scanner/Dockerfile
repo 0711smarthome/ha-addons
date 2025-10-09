@@ -5,7 +5,6 @@ LABEL Ihr Name <IhreEmail@example.com>
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
-# Wir installieren NUR NOCH den Client, nicht den ganzen Dienst
 RUN apk update && apk add --no-cache \
     python3 \
     py3-aiohttp \
@@ -25,5 +24,4 @@ COPY main.py /main.py
 COPY run.sh /run.sh
 RUN chmod a+x /main.py /run.sh
 
-# Wir starten weiterhin über das (jetzt vereinfachte) run.sh
 CMD [ "/run.sh" ]
