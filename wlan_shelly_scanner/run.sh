@@ -2,7 +2,7 @@
 
 set -e
 
-echo "Start-Skript wird ausgeführt (WPA-Supplicant-Version)..."
+echo "Start-Skript wird ausgeführt (nmcli-Version)..."
 
 echo "Starte D-Bus System-Dienst..."
 # Prüfe, ob der Socket bereits existiert und versuche andernfalls den Daemon zu starten.

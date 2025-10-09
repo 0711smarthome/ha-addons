@@ -7,17 +7,17 @@ import asyncio
 import subprocess
 import time
 from urllib.parse import quote
+from typing import List, Optional, Dict, Any
+
 import aiohttp
 from aiohttp import web
 import fcntl
 import random
 
-print("==== NEUSTART (WPA-Supplicant-Logik) ====")
-print("==========================================")
+print("==== NEUSTART ====")
+print("======================")
 
-CONFIGURE_LOCK = asyncio.Lock()
-
-# --- Alle Konstanten an einem Ort ---
+# --- Globale Konstanten und Sperren ---
 LOG_FILE = "/data/progress.log"
 TASK_FILE = "/data/task.json"
 CONFIG_PATH = "/data/options.json"
@@ -25,19 +25,16 @@ WIFI_LIST_FILE = "/var/www/wifi_list.json"
 SCAN_TRIGGER_FILE = "/tmp/scan_now"
 CONFIGURE_TRIGGER_FILE = "/tmp/configure_now"
 
-# KONSTANTEN FÜR WPA-SUPPLICANT
-WPA_SUPP_CONF = "/tmp/wpa_supplicant.conf"
-WPA_SUPP_PID = "/tmp/wpa_supplicant.pid"
-SHELLEY_AP_IP = "192.168.33.1"
-ADDON_STATIC_IP = "192.168.33.2/24"
-
+CONFIGURE_LOCK = asyncio.Lock()
 
 # --- Token-Management (wird nur einmal beim Start gelesen) ---
 SUPERVISOR_TOKEN = os.environ.get("SUPERVISOR_TOKEN")
 HEADERS = {"Authorization": f"Bearer {SUPERVISOR_TOKEN}"}
 
-# --- Kombinierte Logging-Funktion ---
-def log(message):
+# --- Hilfsfunktionen ---
+
+def log(message: str) -> None:
+    """Schreibt eine Nachricht ins Add-on-Log und in eine Log-Datei."""
     log_message = f"{time.strftime('%Y-%m-%d %H:%M:%S')} - {message}"
     print(log_message, flush=True)
     try:
@@ -46,238 +43,184 @@ def log(message):
     except Exception as e:
         print(f"Error writing to log file: {e}", flush=True)
 
-# --- Supervisor API-Funktion ---
-async def supervisor_api_request(session, method, url, data=None):
-    if not SUPERVISOR_TOKEN:
-        log("FATAL: SUPERVISOR_TOKEN is missing. Cannot make API calls.")
-        return None
-    try:
-        async with session.request(method, url, json=data, headers=HEADERS, timeout=40) as response:
-            if response.status >= 400:
-                raw_text = await response.text()
-                log(f"FEHLER bei API-Aufruf ({url}): Status {response.status}, Antwort: {raw_text}")
-                return None
-            return await response.json()
-    except Exception as e:
-        log(f"Schwerer Fehler beim API-Aufruf: {e}")
-        return None
-
-# Hilfsfunktion, um externe Befehle auszuführen und zu loggen
-async def run_command(cmd):
+async def run_command(cmd: List[str]) -> (bool, str, str):
+    """
+    Führt einen externen Befehl aus, loggt ihn und gibt Erfolg, stdout und stderr zurück.
+    """
     log(f"Führe aus: {' '.join(cmd)}")
-    proc = await asyncio.create_subprocess_exec(*cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    proc = await asyncio.create_subprocess_exec(
+        *cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+    )
     stdout, stderr = await proc.communicate()
-    
+
     stdout_str = stdout.decode('utf-8').strip()
     stderr_str = stderr.decode('utf-8').strip()
-    
+
     if stdout_str:
         log(f"Ausgabe: {stdout_str}")
     if stderr_str:
         log(f"Fehler-Ausgabe: {stderr_str}")
-        
-    return proc.returncode == 0
 
-# --- MODIFIZIERTE Hilfsfunktion für wpa_supplicant Cleanup (mit längerer Pause) ---
-async def cleanup_wpa_supplicant(interface):
-    log(f"Starte Cleanup für Schnittstelle {interface}...")
-    
-    # 0. Setze das Gerät manuell zurück/freigeben
-    log(f"Setze Gerät {interface} auf Down und dann Up zur Freigabe...")
-    await run_command(["ip", "link", "set", interface, "down"])
-    await run_command(["ip", "link", "set", interface, "up"])
-    await asyncio.sleep(1) 
+    return proc.returncode == 0, stdout_str, stderr_str
 
-    # 1. Stoppe wpa_supplicant Prozess
-    if os.path.exists(WPA_SUPP_PID):
-        try:
-            with open(WPA_SUPP_PID, 'r') as f:
-                pid = f.read().strip()
-            if pid:
-                log(f"Sende SIGTERM/SIGKILL an wpa_supplicant mit PID {pid}...")
-                await run_command(["kill", "-9", pid])
-        except Exception as e:
-            log(f"Fehler beim Stoppen von wpa_supplicant: {e}")
-        finally:
-            if os.path.exists(WPA_SUPP_PID):
-                os.remove(WPA_SUPP_PID)
+async def wait_for_connection(interface: str, timeout: int = 45) -> bool:
+    """
+    Wartet, bis die Schnittstelle eine aktive Verbindung mit einer IPv4-Adresse hat.
+    """
+    log(f"Warte auf aktive Verbindung und IP-Adresse für '{interface}'...")
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        # Prüfen, ob eine IP-Adresse zugewiesen wurde. Der Shelly vergibt 192.168.33.x
+        success, stdout, _ = await run_command(["nmcli", "-g", "IP4.ADDRESS", "dev", "show", interface])
+        if success and '192.168.33' in stdout:
+            log(f"Erfolgreich verbunden! IP-Adresse: {stdout.split('/')[0]}")
+            return True
+        await asyncio.sleep(2) # Alle 2 Sekunden prüfen
 
-    # 2. Entferne IP-Adresse (Flush)
-    log(f"Setze IP-Adresse für {interface} zurück...")
-    await run_command(["ip", "addr", "flush", "dev", interface])
-
-    # 3. Entferne temporäre Konfigurationsdatei
-    if os.path.exists(WPA_SUPP_CONF):
-        os.remove(WPA_SUPP_CONF)
-    
-    # WICHTIG: Zusätzliche Pause nach dem Aufräumen, damit die Schnittstelle sich erholen kann
-    await asyncio.sleep(5) 
+    log(f"FEHLER: Timeout nach {timeout}s. Keine gültige IP-Adresse für '{interface}' erhalten.")
+    return False
 
 
-# --- Konfigurations-Logik (REIHENFOLGE GEÄNDERT, MODUS-SETZUNG HINZUGEFÜGT) ---
-async def run_configuration_logic(caller_id="unknown"):
+# --- Kernlogik ---
+
+async def run_configuration_logic(caller_id: str) -> None:
+    """
+    Hauptlogik zur Konfiguration der Shellies. Wird exklusiv durch einen Lock ausgeführt.
+    """
     log(f"[{caller_id}] Versuch, die Konfigurations-Sperre zu bekommen...")
-    
     async with CONFIGURE_LOCK:
         log(f"[{caller_id}] Sperre erhalten. Konfigurationsprozess wird jetzt exklusiv ausgeführt.")
         
+        successful_shellies = []
+        failed_shellies = []
+
         try:
-            with open(LOG_FILE, 'w') as f: f.write('')
+            with open(LOG_FILE, 'w') as f: f.write('')  # Log leeren
             log(f"[{caller_id}] Konfigurationsprozess gestartet...")
 
             with open(TASK_FILE, 'r') as f: task = json.load(f)
             with open(CONFIG_PATH, 'r') as f: config = json.load(f)
-            
+
             selected_shellies = task.get("selectedShellies", [])
             user_ssid = task.get("userSsid", "")
             user_password = task.get("userPassword", "")
             interface = config.get("interface", "wlan0")
 
             if not user_ssid or not selected_shellies:
-                log(f"[{caller_id}] FEHLER: Ungültige Aufgabendaten.")
+                log(f"[{caller_id}] FEHLER: Ungültige Aufgabendaten (SSID oder Shellies fehlen).")
                 return
 
-            # Initialer Cleanup
-            await cleanup_wpa_supplicant(interface)
-            
-            encoded_ssid = quote(user_ssid)
-            encoded_pass = quote(user_password)
-            configure_url_base = f"http://{SHELLEY_AP_IP}/settings/sta?ssid={encoded_ssid}&key={encoded_pass}&enabled=1"
+            await run_command(["nmcli", "radio", "wifi", "on"])
 
             for shelly_ssid in selected_shellies:
                 log(f"[{caller_id}] --- Bearbeite: {shelly_ssid} ---")
                 
-                # --- 1. Konfiguration für wpa_supplicant erstellen ---
-                wpa_config_content = f"""
-ctrl_interface=/var/run/wpa_supplicant
-network={{
-    ssid="{shelly_ssid}"
-    key_mgmt=NONE
-}}
-"""
-                with open(WPA_SUPP_CONF, "w") as f:
-                    f.write(wpa_config_content)
-
-                # --- 2. Statische IP zuweisen BEVOR wpa_supplicant gestartet wird ---
-                log(f"[{caller_id}] Weise statische IP {ADDON_STATIC_IP} zu...")
-                ip_config_success = await run_command([
-                    "ip", "addr", "add", ADDON_STATIC_IP, "dev", interface
-                ])
+                # Alte Verbindungen vorsorglich löschen, falls vorhanden
+                await run_command(["nmcli", "connection", "delete", shelly_ssid])
                 
-                if not ip_config_success:
-                     log(f"[{caller_id}] FEHLER: Konnte die statische IP-Adresse nicht setzen.")
-                     await cleanup_wpa_supplicant(interface)
-                     continue
-                
-                await asyncio.sleep(2) # Kurze Pause nach IP-Zuweisung
-
-                # HINZUFÜGEN: Aggressives Freigeben der Schnittstelle, um "Resource busy" zu beenden
-                log(f"[{caller_id}] Erzwinge Freigabe und setze {interface} auf Managed Mode...")
-                await run_command(["iw", "dev", interface, "set", "type", "managed"]) 
-                await asyncio.sleep(1) 
-
-
-                # --- 3. wpa_supplicant starten und warten ---
-                log(f"[{caller_id}] Starte wpa_supplicant für Verbindung zu {shelly_ssid}...")
-                start_success = await run_command([
-                    "wpa_supplicant",
-                    "-i", interface,
-                    "-c", WPA_SUPP_CONF,
-                    "-B",                 # Im Hintergrund ausführen
-                    "-P", WPA_SUPP_PID,   # PID-Datei schreiben
-                    "-D", "nl80211",      # Treiber explizit setzen
+                log(f"[{caller_id}] Versuche Verbindung zu {shelly_ssid}...")
+                connect_success, _, _ = await run_command([
+                    "nmcli", "device", "wifi", "connect", shelly_ssid,
+                    "name", shelly_ssid, "ifname", interface
                 ])
 
-                if not start_success:
-                    log(f"[{caller_id}] FEHLER: Konnte wpa_supplicant nicht starten.")
+                if not connect_success:
+                    log(f"[{caller_id}] FEHLER: Der Verbindungsaufbau zu {shelly_ssid} schlug fehl.")
+                    failed_shellies.append(shelly_ssid)
                     continue
                 
-                log(f"[{caller_id}] wpa_supplicant gestartet. Warte 15s auf Verbindung...")
-                await asyncio.sleep(15) # Längere Wartezeit für wpa-Verbindung (von 10s auf 15s)
-                
-                # --- 4. Sende Konfigurationsbefehl (mit Retry) ---
-                configure_url = configure_url_base
-                success = False
+                # Intelligentes Warten auf eine gültige IP-Adresse
+                if not await wait_for_connection(interface):
+                    log(f"[{caller_id}] FEHLER: Konnte keine stabile Verbindung zu {shelly_ssid} herstellen.")
+                    failed_shellies.append(shelly_ssid)
+                    await run_command(["nmcli", "connection", "delete", shelly_ssid])
+                    continue
 
-                for attempt in range(4): # Erhöhe auf 4 Versuche
-                    log(f"[{caller_id}] Sende Konfigurationsbefehl an Shelly (Versuch {attempt + 1})...")
-                    try:
-                        # Request-Timeout erhöht auf 10s
-                        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10)) as session: 
-                            async with session.get(configure_url) as response:
-                                if response.status == 200:
-                                    log(f"[{caller_id}] Befehl erfolgreich gesendet.")
-                                    success = True
-                                    break
-                                else:
-                                    raw_text = await response.text()
-                                    log(f"[{caller_id}] FEHLER: Shelly-Antwort: Status {response.status}, Text: {raw_text[:100]}")
-                    except Exception as e:
-                        log(f"[{caller_id}] FEHLER beim Senden des HTTP-Befehls (Versuch {attempt + 1}): {e}")
-                        
-                    if not success and attempt < 3:
-                        await asyncio.sleep(5) # Kurze Wartezeit vor dem nächsten Retry
+                # Ab hier ist die Verbindung aktiv und hat eine IP
+                shelly_ip = "192.168.33.1"
+                encoded_ssid = quote(user_ssid)
+                encoded_pass = quote(user_password)
+                configure_url = f"http://{shelly_ip}/settings/sta?ssid={encoded_ssid}&key={encoded_pass}&enabled=1"
 
-                if not success:
-                    log(f"[{caller_id}] KRITISCHER FEHLER: Konnte Shelly nach {attempt + 1} Versuchen nicht konfigurieren.")
-                
-                # --- 5. Aufräumen der Verbindung ---
-                log(f"[{caller_id}] Trenne Verbindung und bereinige wpa_supplicant...")
-                await cleanup_wpa_supplicant(interface)
-                
+                log(f"[{caller_id}] Sende Konfigurationsbefehl an {shelly_ip}...")
+                try:
+                    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=20)) as session:
+                        async with session.get(configure_url) as response:
+                            if response.status == 200:
+                                log(f"[{caller_id}] Befehl für {shelly_ssid} erfolgreich gesendet.")
+                                successful_shellies.append(shelly_ssid)
+                            else:
+                                log(f"[{caller_id}] FEHLER bei {shelly_ssid}: Shelly-Antwort: {response.status}, Text: {await response.text()}")
+                                failed_shellies.append(shelly_ssid)
+                except Exception as e:
+                    log(f"[{caller_id}] FEHLER beim Senden des HTTP-Befehls für {shelly_ssid}: {e}")
+                    failed_shellies.append(shelly_ssid)
+                finally:
+                    log(f"[{caller_id}] Trenne Verbindung zu {shelly_ssid}...")
+                    await run_command(["nmcli", "connection", "down", shelly_ssid])
+                    await run_command(["nmcli", "connection", "delete", shelly_ssid])
+                    log(f"[{caller_id}] Verbindung getrennt.")
+        
         except Exception as e:
-            log(f"[{caller_id}] Ein unerwarteter Fehler ist aufgetreten: {e}")
-            await cleanup_wpa_supplicant(interface)
+            log(f"[{caller_id}] Ein unerwarteter, schwerer Fehler ist aufgetreten: {e}")
         finally:
-            log(f"[{caller_id}] --- Konfiguration abgeschlossen. ---")
+            log("--- Konfiguration abgeschlossen ---")
+            if successful_shellies: log(f"Erfolgreich: {len(successful_shellies)} Geräte ({', '.join(successful_shellies)})")
+            if failed_shellies: log(f"Fehlgeschlagen: {len(failed_shellies)} Geräte ({', '.join(failed_shellies)})")
             if os.path.exists(TASK_FILE): os.remove(TASK_FILE)
             log(f"[{caller_id}] Sperre wird freigegeben.")
 
 
-# --- WLAN-Scan-Schleife (bleibt gleich) ---
-async def wifi_scan_loop():
-    log("WLAN Scan-Dienst gestartet. Warte auf Trigger...")
-    config = json.load(open(CONFIG_PATH))
+async def scan_wifi_networks(interface: str) -> None:
+    """Scannt nach WLAN-Netzwerken mit nmcli und schreibt das Ergebnis in eine Datei."""
+    log("Manueller Scan wird ausgelöst...")
+    try:
+        # --rescan yes erzwingt einen frischen Scan
+        success, stdout, stderr = await run_command([
+            "nmcli", "-f", "SSID", "dev", "wifi", "list", "--rescan", "yes"
+        ])
+        if success:
+            log("Scan erfolgreich.")
+            lines = stdout.strip().split('\n')
+            # Filtere leere Zeilen und den Header 'SSID' heraus
+            ssids = [line.strip() for line in lines if line.strip() and line.strip() != 'SSID']
+            with open(WIFI_LIST_FILE, 'w') as f:
+                json.dump(ssids, f)
+        else:
+            log(f"FEHLER: 'nmcli scan' fehlgeschlagen. Fehler: {stderr}")
+    except Exception as e:
+        log(f"Fehler während des Scans: {e}")
+
+
+async def background_worker_loop() -> None:
+    """
+    Endlosschleife, die auf Trigger-Dateien wartet, um Scans oder Konfigurationen zu starten.
+    """
+    log("Hintergrund-Dienst gestartet. Warte auf Trigger...")
+    with open(CONFIG_PATH) as f:
+        config = json.load(f)
     interface = config.get("interface", "wlan0")
 
     while True:
-        while not os.path.exists(SCAN_TRIGGER_FILE) and not os.path.exists(CONFIGURE_TRIGGER_FILE):
-            await asyncio.sleep(1)
-
         if os.path.exists(CONFIGURE_TRIGGER_FILE):
             os.remove(CONFIGURE_TRIGGER_FILE)
-            
             task_id = f"task_{random.randint(1000, 9999)}"
-            
-            await run_configuration_logic(caller_id=task_id)
-            continue
+            asyncio.create_task(run_configuration_logic(caller_id=task_id))
 
-        if os.path.exists(SCAN_TRIGGER_FILE):
+        elif os.path.exists(SCAN_TRIGGER_FILE):
             os.remove(SCAN_TRIGGER_FILE)
-            
-            log("Manueller Scan getriggert...")
-            try:
-                # iw scan ist die korrekte und direkte Methode
-                cmd = ["iw", "dev", interface, "scan"]
-                proc = await asyncio.create_subprocess_exec(*cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                stdout, stderr = await proc.communicate()
-                if proc.returncode == 0:
-                    log("Scan erfolgreich.")
-                    output = stdout.decode('utf-8')
-                    ssids = [line.split("SSID: ")[1] for line in output.split('\n') if "SSID: " in line and line.split("SSID: ")[1]]
-                    with open(WIFI_LIST_FILE, 'w') as f:
-                        json.dump(ssids, f)
-                else:
-                    log(f"FEHLER: 'iw scan' fehlgeschlagen. Fehler: {stderr.decode('utf-8')}")
-            except Exception as e:
-                log(f"Fehler während des Scans: {e}")
+            await scan_wifi_networks(interface)
+        
+        await asyncio.sleep(1)
 
-# --- API-Server-Handler (bleiben gleich) ---
-async def handle_scan(request):
+
+# --- API-Server ---
+
+async def handle_scan(request: web.Request) -> web.Response:
     with open(SCAN_TRIGGER_FILE, "w") as f: pass
     return web.Response(status=204)
 
-async def handle_configure(request):
+async def handle_configure(request: web.Request) -> web.Response:
     try:
         data = await request.json()
         with open(TASK_FILE, "w") as f: json.dump(data, f)
@@ -287,37 +230,36 @@ async def handle_configure(request):
         log(f"API Fehler /api/configure: {e}")
         return web.Response(status=500)
 
-async def handle_progress(request):
+async def handle_progress(request: web.Request) -> web.Response:
     try:
         with open(LOG_FILE, "r") as f: content = f.read()
-        return web.Response(text=content, content_type="text/plain")
+        return web.Response(text=content, content_type="text/plain; charset=utf-8")
     except FileNotFoundError:
         return web.Response(text="Log-Datei noch nicht vorhanden.", status=200)
 
-# --- Haupt-Startfunktion (bleibt gleich) ---
-async def start_background_tasks(app):
-    app['wifi_scanner'] = asyncio.create_task(wifi_scan_loop())
+# --- Haupt-Startfunktion ---
 
-async def main_startup():
+async def start_background_tasks(app: web.Application) -> None:
+    app['background_worker'] = asyncio.create_task(background_worker_loop())
+
+async def main_startup() -> None:
     log(".........................................Add-on wird gestartet.........................................")
 
     if not os.path.exists(WIFI_LIST_FILE):
         log("wifi_list.json nicht gefunden, erstelle eine leere Datei.")
-        with open(WIFI_LIST_FILE, "w") as f:
-            json.dump([], f) 
+        with open(WIFI_LIST_FILE, "w") as f: json.dump([], f)
 
     app = web.Application()
     app.on_startup.append(start_background_tasks)
     app.router.add_get("/api/scan", handle_scan)
     app.router.add_post("/api/configure", handle_configure)
     app.router.add_get("/api/progress", handle_progress)
-    
+
     runner = web.AppRunner(app)
     await runner.setup()
-    site = web.TCPSite(runner, '127.0.0.1', 8888)
+    site = web.TCPSite(runner, '0.0.0.0', 8888)
     await site.start()
-    log("API-Server läuft auf 127.0.0.1:8888")
-    
+    log("API-Server läuft auf Port 8888")
     await asyncio.Event().wait()
 
 if __name__ == "__main__":

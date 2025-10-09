@@ -9,13 +9,12 @@ RUN apk update && apk add --no-cache \
     python3 \
     py3-aiohttp \
     nginx \
-    iw \
+    networkmanager \
     jq \
     bash \
     curl \
     util-linux \
-    wpa_supplicant \
-    dbus 
+    dbus
 
 RUN rm -f /etc/nginx/http.d/default.conf
 COPY nginx/ingress.conf /etc/nginx/http.d/ingress.conf
