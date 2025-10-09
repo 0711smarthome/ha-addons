@@ -11,6 +11,13 @@ import aiohttp
 from aiohttp import web
 import fcntl
 
+print("==== ENVIRONMENT ====")
+for key, val in os.environ.items():
+    if "SUPERVISOR" in key or "HASS" in key:
+        print(f"{key}={val}")
+print("======================")
+
+
 # --- Alle Konstanten an einem Ort ---
 LOG_FILE = "/data/progress.log"
 TASK_FILE = "/data/task.json"
