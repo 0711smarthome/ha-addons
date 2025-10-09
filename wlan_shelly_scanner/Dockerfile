@@ -6,10 +6,11 @@ LABEL Ihr Name <IhreEmail@example.com>
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 RUN apk update && apk add --no-cache \
+    networkmanager \
+    networkmanager-cli \
     python3 \
     py3-aiohttp \
     nginx \
-    networkmanager-cli \
     jq \
     bash \
     curl \
