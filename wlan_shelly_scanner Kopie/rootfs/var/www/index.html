@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shelly WLAN Setup</title>
+    <link rel="stylesheet" href="style.css?v=1.5.1">
+</head>
+<body>
+    <div class="container">
+        <div id="step1">
+            <h1>PIN Eingabe</h1>
+            <p>Bitte gib die PIN ein, um fortzufahren.</p>
+            <input type="password" id="pinInput" maxlength="4" inputmode="numeric" pattern="[0-9]*">
+            <button onclick="checkPin()">Bestätigen</button>
+            <p id="pinError" class="error-message"></p>
+        </div>
+
+        <div id="step2" style="display: none;">
+            <h1>WLAN Konfiguration</h1>
+            
+            <form id="wifiForm">
+                <h2>1. Shelly-Geräte auswählen</h2>
+                <p>Wähle die Shelly-Netzwerke aus, die konfiguriert werden sollen.</p>
+                <button type="button" onclick="triggerScan()" class="scan-button">Neuen Scan starten</button>
+                <div id="wifiList"></div>
+                
+                <hr>
+
+                <h2>2. Deine WLAN-Zugangsdaten</h2>
+                <p>Gib die Zugangsdaten für dein Heim-WLAN ein, mit dem sich die Shelly's verbinden sollen.</p>
+                <label for="userSsid">WLAN-Name (SSID):</label>
+                <input type="text" id="userSsid" name="userSsid" required>
+                
+                <label for="userPassword">WLAN-Passwort:</label>
+                <input type="password" id="userPassword" name="userPassword" required>
+                
+                <button type="submit">Konfiguration starten</button>
+            </form>
+
+            <div id="progressArea" style="display: none;">
+                <hr>
+                <h2>Konfigurations-Fortschritt</h2>
+                <pre id="logOutput">Starte Prozess...</pre>
+            </div>
+        </div>
+    </div>
+    <script src="script.js?v=1.5.5"></script>
+</body>
+</html>
