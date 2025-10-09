@@ -176,7 +176,8 @@ async def wifi_scan_loop():
         # Wenn die Konfiguration getriggert wird, hat diese Vorrang
         if os.path.exists(CONFIGURE_TRIGGER_FILE):
             os.remove(CONFIGURE_TRIGGER_FILE)
-            await run_configuration_logic()
+            # DIES ist der EINZIGE Ort, an dem die Logik aufgerufen wird.
+            await run_configuration_logic() 
             continue # Gehe zum Anfang der Schleife und warte erneut
 
         # Ansonsten führe einen Scan aus
@@ -205,12 +206,19 @@ async def handle_scan(request):
     with open(SCAN_TRIGGER_FILE, "w") as f: pass
     return web.Response(status=204)
 
+# main.py
+
 async def handle_configure(request):
     try:
         data = await request.json()
+        # Schreibe die Aufgaben-Datei für die Schleife
         with open(TASK_FILE, "w") as f: json.dump(data, f)
+        # Erstelle die Trigger-Datei, damit die Schleife es bemerkt
         with open(CONFIGURE_TRIGGER_FILE, "w") as f: pass
-        return web.Response(status=202)
+        
+        # KEIN Aufruf von run_configuration_logic() hier!
+        
+        return web.Response(status=202) # Status 202 bedeutet "Accepted" (Anfrage angenommen)
     except Exception as e:
         log(f"API Fehler /api/configure: {e}")
         return web.Response(status=500)
