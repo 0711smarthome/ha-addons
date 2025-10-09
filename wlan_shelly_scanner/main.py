@@ -78,10 +78,16 @@ async def run_command(cmd):
         
     return proc.returncode == 0
 
-# --- NEUE Hilfsfunktion für wpa_supplicant Cleanup ---
+# --- MODIFIZIERTE Hilfsfunktion für wpa_supplicant Cleanup (mit Freigabe) ---
 async def cleanup_wpa_supplicant(interface):
     log(f"Starte Cleanup für Schnittstelle {interface}...")
     
+    # 0. Setze das Gerät manuell zurück/freigeben, um "Resource busy" zu vermeiden
+    log(f"Setze Gerät {interface} auf Down und dann Up zur Freigabe...")
+    await run_command(["ip", "link", "set", interface, "down"])
+    await run_command(["ip", "link", "set", interface, "up"])
+    await asyncio.sleep(1) 
+
     # 1. Stoppe wpa_supplicant Prozess
     if os.path.exists(WPA_SUPP_PID):
         try:
@@ -106,6 +112,7 @@ async def cleanup_wpa_supplicant(interface):
     
     await asyncio.sleep(2) # Kurze Pause nach dem Aufräumen
 
+
 # --- Konfigurations-Logik (MODIFIZIERT) ---
 async def run_configuration_logic(caller_id="unknown"):
     log(f"[{caller_id}] Versuch, die Konfigurations-Sperre zu bekommen...")
@@ -113,7 +120,6 @@ async def run_configuration_logic(caller_id="unknown"):
     async with CONFIGURE_LOCK:
         log(f"[{caller_id}] Sperre erhalten. Konfigurationsprozess wird jetzt exklusiv ausgeführt.")
         
-        # Log leeren (bleibt gleich)
         try:
             with open(LOG_FILE, 'w') as f: f.write('')
             log(f"[{caller_id}] Konfigurationsprozess gestartet...")
@@ -160,7 +166,8 @@ network={{
                     "-c", WPA_SUPP_CONF,
                     "-B",                 # Im Hintergrund ausführen
                     "-P", WPA_SUPP_PID,   # PID-Datei schreiben
-                    "-D", "nl80211"       # Treiber explizit setzen
+                    "-D", "nl80211",      # Treiber explizit setzen
+                    "-N"                  # NEU: Deaktiviere P2P-Funktionen, um "Resource busy" zu vermeiden
                 ])
 
                 if not start_success:
@@ -168,8 +175,8 @@ network={{
                     await cleanup_wpa_supplicant(interface)
                     continue
                 
-                log(f"[{caller_id}] wpa_supplicant gestartet. Warte auf Verbindung...")
-                await asyncio.sleep(8) # Wartezeit für die wpa-Verbindung
+                log(f"[{caller_id}] wpa_supplicant gestartet. Warte 10s auf Verbindung...")
+                await asyncio.sleep(10) # Längere Wartezeit für die wpa-Verbindung
 
                 # --- 3. Statische IP zuweisen (Shelly bietet kein DHCP im AP-Modus) ---
                 log(f"[{caller_id}] Weise statische IP {ADDON_STATIC_IP} zu...")
@@ -182,22 +189,33 @@ network={{
                      await cleanup_wpa_supplicant(interface)
                      continue
                 
-                await asyncio.sleep(4) # Wartezeit für Stabilität
+                await asyncio.sleep(8) # Längere Wartezeit für Stabilität und Netzwerk-Discovery
                 
-                # --- 4. Sende Konfigurationsbefehl ---
+                # --- 4. Sende Konfigurationsbefehl (mit Retry) ---
                 configure_url = configure_url_base
-                
-                log(f"[{caller_id}] Sende Konfigurationsbefehl an Shelly...")
-                try:
-                    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10)) as session:
-                        async with session.get(configure_url) as response:
-                            if response.status == 200:
-                                log(f"[{caller_id}] Befehl erfolgreich gesendet.")
-                            else:
-                                raw_text = await response.text()
-                                log(f"[{caller_id}] FEHLER: Shelly-Antwort: Status {response.status}, Text: {raw_text[:100]}")
-                except Exception as e:
-                    log(f"[{caller_id}] FEHLER beim Senden des HTTP-Befehls: {e}")
+                success = False
+
+                for attempt in range(3):
+                    log(f"[{caller_id}] Sende Konfigurationsbefehl an Shelly (Versuch {attempt + 1})...")
+                    try:
+                        # Reduziertes Request-Timeout für schnelleren Retry
+                        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=5)) as session: 
+                            async with session.get(configure_url) as response:
+                                if response.status == 200:
+                                    log(f"[{caller_id}] Befehl erfolgreich gesendet.")
+                                    success = True
+                                    break
+                                else:
+                                    raw_text = await response.text()
+                                    log(f"[{caller_id}] FEHLER: Shelly-Antwort: Status {response.status}, Text: {raw_text[:100]}")
+                    except Exception as e:
+                        log(f"[{caller_id}] FEHLER beim Senden des HTTP-Befehls (Versuch {attempt + 1}): {e}")
+                        
+                    if not success and attempt < 2:
+                        await asyncio.sleep(5) # Kurze Wartezeit vor dem nächsten Retry
+
+                if not success:
+                    log(f"[{caller_id}] KRITISCHER FEHLER: Konnte Shelly nach 3 Versuchen nicht konfigurieren.")
                 
                 # --- 5. Aufräumen der Verbindung ---
                 log(f"[{caller_id}] Trenne Verbindung und bereinige wpa_supplicant...")
@@ -212,7 +230,7 @@ network={{
             log(f"[{caller_id}] Sperre wird freigegeben.")
 
 
-# --- WLAN-Scan-Schleife (bleibt bis auf die Log-Ausgabe gleich) ---
+# --- WLAN-Scan-Schleife (bleibt gleich) ---
 async def wifi_scan_loop():
     log("WLAN Scan-Dienst gestartet. Warte auf Trigger...")
     config = json.load(open(CONFIG_PATH))
@@ -243,8 +261,6 @@ async def wifi_scan_loop():
                     log("Scan erfolgreich.")
                     output = stdout.decode('utf-8')
                     # HINWEIS: Die einfache SSID-Extraktion funktioniert nur mit iw in manchen Ausgaben
-                    # Bei Bedarf muss hier ein JSON-Parser für iw-Ausgabe verwendet werden (z.B. iw dev wlan0 scan dump | grep "SSID:"),
-                    # aber wir behalten die vorhandene Logik bei.
                     ssids = [line.split("SSID: ")[1] for line in output.split('\n') if "SSID: " in line and line.split("SSID: ")[1]]
                     with open(WIFI_LIST_FILE, 'w') as f:
                         json.dump(ssids, f)
