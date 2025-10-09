@@ -233,7 +233,7 @@ async def handle_configure(request: web.Request) -> web.Response:
 async def handle_progress(request: web.Request) -> web.Response:
     try:
         with open(LOG_FILE, "r") as f: content = f.read()
-        return web.Response(text=content, content_type="text/plain; charset=utf-8")
+        return web.Response(text=content, content_type="text/plain", charset="utf-8")
     except FileNotFoundError:
         return web.Response(text="Log-Datei noch nicht vorhanden.", status=200)
 
