@@ -1,6 +1,6 @@
 {
   "name": "WLAN Scanner",
-  "version": "7.0.0-FINAL",
+  "version": "8.0.0-TAKEOVER",
   "slug": "wifi_scanner",
   "description": "Sucht und konfiguriert Shelly-WLAN-Netzwerke.",
   "arch": [ "aarch64", "amd64", "armhf", "armv7", "i386" ],
@@ -10,10 +10,6 @@
 
   "host_network": true,
 
-  "map": [
-    "dbus"
-  ],
-  
   "privileged": [
     "NET_ADMIN",
     "SYS_ADMIN"

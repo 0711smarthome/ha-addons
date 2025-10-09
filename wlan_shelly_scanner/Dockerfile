@@ -14,6 +14,7 @@ RUN apk update && apk add --no-cache \
     bash \
     curl \
     util-linux \
+    networkmanager \
     networkmanager-cli
 
 RUN rm -f /etc/nginx/http.d/default.conf

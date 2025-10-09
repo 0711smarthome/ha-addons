@@ -1,38 +1,32 @@
 #!/bin/bash
 
-# Port-Definition, damit wir sie leicht ändern können
-INGRESS_PORT=54321
+set -e
 
-echo "===== DETEKTIV-SKRIPT STARTET ====="
-echo "Ich werde jetzt prüfen, ob Port ${INGRESS_PORT} bereits verwendet wird, BEVOR ich Nginx starte..."
-echo "-------------------------------------"
+echo "Start-Skript wird ausgeführt (Takeover-Version)..."
 
-# netstat ist möglicherweise nicht installiert, ss ist eine gute Alternative
-if command -v netstat &> /dev/null
-then
-    LISTENING_PROCESS=$(netstat -tulpn | grep ":${INGRESS_PORT}")
+mkdir -p /var/run/dbus
+
+echo "Starte D-Bus System-Dienst..."
+dbus-daemon --system
+sleep 2
+
+echo "Starte NetworkManager-Dienst..."
+NetworkManager --no-daemon &
+sleep 3
+
+echo "===== DIAGNOSE-CHECK ====="
+echo "--> Prüfe laufende Prozesse:"
+ps aux | grep -E "dbus|NetworkManager" || echo "DIAGNOSE: Einer der Dienste wurde nicht im 'ps' Output gefunden."
+echo "--> Prüfe, ob der D-Bus Socket existiert:"
+if [ -S /var/run/dbus/system_bus_socket ]; then
+    echo "DIAGNOSE: ERFOLG! D-Bus Socket wurde gefunden."
 else
-    # ss ist auf den HA base images vorhanden
-    LISTENING_PROCESS=$(ss -tulpn | grep ":${INGRESS_PORT}")
+    echo "DIAGNOSE: FEHLER! D-Bus Socket wurde NICHT gefunden!"
 fi
-
-
-if [ -z "$LISTENING_PROCESS" ]
-then
-    echo "DIAGNOSE: Port ${INGRESS_PORT} ist FREI. Das ist gut."
-else
-    echo "DIAGNOSE: ALARM! Port ${INGRESS_PORT} wird bereits von einem anderen Prozess verwendet!"
-    echo "Hier ist der blockierende Prozess:"
-    echo "$LISTENING_PROCESS"
-    echo "Das beweist die Theorie des doppelten Starts."
-    echo "Das Skript wird jetzt trotzdem versuchen, Nginx zu starten, was fehlschlagen wird."
-fi
-echo "-------------------------------------"
-
+echo "=========================="
 
 echo "Starte Nginx..."
-# Dieser Befehl wird fehlschlagen, wenn der Port belegt ist
 nginx
 
-echo "Starte main.py..."
+echo "Diagnose abgeschlossen. Starte main.py..."
 exec python3 /main.py
