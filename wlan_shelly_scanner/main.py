@@ -25,7 +25,7 @@ WIFI_LIST_FILE = "/var/www/wifi_list.json"
 SCAN_TRIGGER_FILE = "/tmp/scan_now"
 CONFIGURE_TRIGGER_FILE = "/tmp/configure_now"
 
-# NEUE KONSTANTEN FÜR WPA-SUPPLICANT
+# KONSTANTEN FÜR WPA-SUPPLICANT
 WPA_SUPP_CONF = "/tmp/wpa_supplicant.conf"
 WPA_SUPP_PID = "/tmp/wpa_supplicant.pid"
 SHELLEY_AP_IP = "192.168.33.1"
@@ -46,7 +46,7 @@ def log(message):
     except Exception as e:
         print(f"Error writing to log file: {e}", flush=True)
 
-# --- Supervisor API-Funktion (aus configure_shellies.py) ---
+# --- Supervisor API-Funktion ---
 async def supervisor_api_request(session, method, url, data=None):
     if not SUPERVISOR_TOKEN:
         log("FATAL: SUPERVISOR_TOKEN is missing. Cannot make API calls.")
@@ -78,11 +78,11 @@ async def run_command(cmd):
         
     return proc.returncode == 0
 
-# --- MODIFIZIERTE Hilfsfunktion für wpa_supplicant Cleanup (Zusätzliche Wartezeit) ---
+# --- MODIFIZIERTE Hilfsfunktion für wpa_supplicant Cleanup (mit längerer Pause) ---
 async def cleanup_wpa_supplicant(interface):
     log(f"Starte Cleanup für Schnittstelle {interface}...")
     
-    # 0. Setze das Gerät manuell zurück/freigeben, um "Resource busy" zu vermeiden
+    # 0. Setze das Gerät manuell zurück/freigeben
     log(f"Setze Gerät {interface} auf Down und dann Up zur Freigabe...")
     await run_command(["ip", "link", "set", interface, "down"])
     await run_command(["ip", "link", "set", interface, "up"])
@@ -110,10 +110,11 @@ async def cleanup_wpa_supplicant(interface):
     if os.path.exists(WPA_SUPP_CONF):
         os.remove(WPA_SUPP_CONF)
     
-    await asyncio.sleep(5) # WICHTIG: Zusätzliche Pause nach dem Aufräumen, damit die Schnittstelle sich erholen kann
+    # WICHTIG: Zusätzliche Pause nach dem Aufräumen, damit die Schnittstelle sich erholen kann
+    await asyncio.sleep(5) 
 
 
-# --- Konfigurations-Logik (KORRIGIERT: Reihenfolge der IP-Zuweisung geändert) ---
+# --- Konfigurations-Logik (REIHENFOLGE GEÄNDERT, MODUS-SETZUNG HINZUGEFÜGT) ---
 async def run_configuration_logic(caller_id="unknown"):
     log(f"[{caller_id}] Versuch, die Konfigurations-Sperre zu bekommen...")
     
@@ -158,7 +159,6 @@ network={{
                     f.write(wpa_config_content)
 
                 # --- 2. Statische IP zuweisen BEVOR wpa_supplicant gestartet wird ---
-                # Da Shelly kein DHCP hat, ist dies kritisch für die Kommunikation
                 log(f"[{caller_id}] Weise statische IP {ADDON_STATIC_IP} zu...")
                 ip_config_success = await run_command([
                     "ip", "addr", "add", ADDON_STATIC_IP, "dev", interface
@@ -170,6 +170,12 @@ network={{
                      continue
                 
                 await asyncio.sleep(2) # Kurze Pause nach IP-Zuweisung
+
+                # HINZUFÜGEN: Aggressives Freigeben der Schnittstelle, um "Resource busy" zu beenden
+                log(f"[{caller_id}] Erzwinge Freigabe und setze {interface} auf Managed Mode...")
+                await run_command(["iw", "dev", interface, "set", "type", "managed"]) 
+                await asyncio.sleep(1) 
+
 
                 # --- 3. wpa_supplicant starten und warten ---
                 log(f"[{caller_id}] Starte wpa_supplicant für Verbindung zu {shelly_ssid}...")
@@ -184,7 +190,6 @@ network={{
 
                 if not start_success:
                     log(f"[{caller_id}] FEHLER: Konnte wpa_supplicant nicht starten.")
-                    # cleanup_wpa_supplicant wird hier bereits aufgerufen (weiter unten)
                     continue
                 
                 log(f"[{caller_id}] wpa_supplicant gestartet. Warte 15s auf Verbindung...")
@@ -197,7 +202,7 @@ network={{
                 for attempt in range(4): # Erhöhe auf 4 Versuche
                     log(f"[{caller_id}] Sende Konfigurationsbefehl an Shelly (Versuch {attempt + 1})...")
                     try:
-                        # Request-Timeout erhöht auf 10s, falls Shelly langsam reagiert
+                        # Request-Timeout erhöht auf 10s
                         async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10)) as session: 
                             async with session.get(configure_url) as response:
                                 if response.status == 200:
