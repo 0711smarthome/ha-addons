@@ -14,8 +14,10 @@ RUN apk update && apk add --no-cache \
     bash \
     curl \
     util-linux \
-    networkmanager \
-    networkmanager-cli
+    wpa_supplicant \
+    # NetworkManager und CLI entfernt, da wir direkt mit wpa_supplicant arbeiten
+    # networkmanager \
+    # networkmanager-cli
 
 RUN rm -f /etc/nginx/http.d/default.conf
 COPY nginx/ingress.conf /etc/nginx/http.d/ingress.conf
