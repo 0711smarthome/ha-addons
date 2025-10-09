@@ -1,5 +1,4 @@
 #!/usr/bin/with-contenv sh
-#!/usr/bin/env python3
 import os
 import sys
 import json
@@ -152,7 +151,7 @@ async def start_background_tasks(app):
     app['wifi_scanner'] = asyncio.create_task(wifi_scan_loop())
 
 async def main_startup():
-    log("Add-on wird gestartet...")
+    log(".....................................................................................................Add-on wird gestartet...")
     log(f"DEBUG: Supervisor Token vorhanden: {'Ja' if SUPERVISOR_TOKEN else 'Nein'}")
     if SUPERVISOR_TOKEN:
         log(f"DEBUG: Token beginnt mit: {SUPERVISOR_TOKEN[:5]}, endet mit: {SUPERVISOR_TOKEN[-5:]}")
