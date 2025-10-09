@@ -1,5 +1,5 @@
 ARG BUILD_FROM
-FROM $BUILD_FROM
+FROM alpine:3.19
 
 LABEL Ihr Name <IhreEmail@example.com>
 
