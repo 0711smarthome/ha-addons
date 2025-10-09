@@ -15,9 +15,8 @@ RUN apk update && apk add --no-cache \
     curl \
     util-linux \
     wpa_supplicant \
-    # NetworkManager und CLI entfernt, da wir direkt mit wpa_supplicant arbeiten
-    # networkmanager \
-    # networkmanager-cli
+    # FEHLTE: dbus muss für dbus-daemon installiert werden
+    dbus
 
 RUN rm -f /etc/nginx/http.d/default.conf
 COPY nginx/ingress.conf /etc/nginx/http.d/ingress.conf
