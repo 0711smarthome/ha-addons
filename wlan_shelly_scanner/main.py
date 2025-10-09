@@ -1,13 +1,5 @@
 #!/usr/bin/env python3
 # coding: utf-8
-"""
-Home Assistant Add-on: WLAN Scanner
-Autor: <dein Name>
-Version: 3.1.2
-
-Startpunkt für das Add-on – enthält API-Server, WLAN-Scanner und Konfigurationslogik.
-"""
-
 import os
 import sys
 import json
@@ -19,7 +11,7 @@ import aiohttp
 from aiohttp import web
 import fcntl
 
-# --- Konstanten ---
+# --- Alle Konstanten an einem Ort ---
 LOG_FILE = "/data/progress.log"
 TASK_FILE = "/data/task.json"
 CONFIG_PATH = "/data/options.json"
@@ -27,11 +19,11 @@ WIFI_LIST_FILE = "/var/www/wifi_list.json"
 SCAN_TRIGGER_FILE = "/tmp/scan_now"
 CONFIGURE_TRIGGER_FILE = "/tmp/configure_now"
 
-# --- Supervisor-Token ---
+# --- Token-Management (wird nur einmal beim Start gelesen) ---
 SUPERVISOR_TOKEN = os.environ.get("SUPERVISOR_TOKEN")
-HEADERS = {"Authorization": f"Bearer {SUPERVISOR_TOKEN}"} if SUPERVISOR_TOKEN else {}
+HEADERS = {"Authorization": f"Bearer {SUPERVISOR_TOKEN}"}
 
-# --- Logging ---
+# --- Kombinierte Logging-Funktion ---
 def log(message):
     log_message = f"{time.strftime('%Y-%m-%d %H:%M:%S')} - {message}"
     print(log_message, flush=True)
@@ -41,11 +33,10 @@ def log(message):
     except Exception as e:
         print(f"Error writing to log file: {e}", flush=True)
 
-# --- Startmeldung ---
-log(".....................................................................................................Add-on wird gestartet...")
-log(f"DEBUG: Supervisor Token vorhanden: {'Ja' if SUPERVISOR_TOKEN else 'Nein'}")
-if SUPERVISOR_TOKEN:
-    log(f"DEBUG: Token beginnt mit: {SUPERVISOR_TOKEN[:5]}, endet mit: {SUPERVISOR_TOKEN[-5:]}")
+# --- Supervisor API-Funktion (aus configure_shellies.py) ---
+async def supervisor_api_request(session, method, url, data=None):
+    if not SUPERVISOR_TOKEN:
+        log("FATAL: SUPERVISOR_TOKEN is missing. Cannot make API calls.")
         return None
     try:
         async with session.request(method, url, json=data, headers=HEADERS, timeout=40) as response:
