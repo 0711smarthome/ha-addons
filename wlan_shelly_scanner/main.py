@@ -115,7 +115,6 @@ async def run_configuration_logic(caller_id: str) -> None:
             for shelly_ssid in selected_shellies:
                 log(f"[{caller_id}] --- Bearbeite: {shelly_ssid} ---")
                 
-                # Alte Verbindungen vorsorglich löschen, falls vorhanden
                 await run_command(["nmcli", "connection", "delete", shelly_ssid])
                 
                 log(f"[{caller_id}] Versuche Verbindung zu {shelly_ssid}...")
@@ -129,7 +128,6 @@ async def run_configuration_logic(caller_id: str) -> None:
                     failed_shellies.append(shelly_ssid)
                     continue
                 
-                # Intelligentes Warten auf eine gültige IP-Adresse
                 if not await wait_for_connection(interface):
                     log(f"[{caller_id}] FEHLER: Konnte keine stabile Verbindung zu {shelly_ssid} herstellen.")
                     failed_shellies.append(shelly_ssid)
@@ -138,21 +136,56 @@ async def run_configuration_logic(caller_id: str) -> None:
 
                 # Ab hier ist die Verbindung aktiv und hat eine IP
                 shelly_ip = "192.168.33.1"
-                encoded_ssid = quote(user_ssid)
-                encoded_pass = quote(user_password)
-                configure_url = f"http://{shelly_ip}/settings/sta?ssid={encoded_ssid}&key={encoded_pass}&enabled=1"
 
-                log(f"[{caller_id}] Sende Konfigurationsbefehl an {shelly_ip}...")
+                # ####################################################################
+                # ### START DER ÄNDERUNG: Gen2-Befehl korrekt zusammenbauen ###
+                # ####################################################################
 
-                log(f">>>>>  {configure_url}")
+                # 1. Erstelle das Konfigurations-Objekt als Python Dictionary
+                config_payload = {
+                    "config": {
+                        "sta": {
+                            "ssid": user_ssid,
+                            "pass": user_password,
+                            "enable": True
+                        }
+                    }
+                }
+
+                # 2. Wandle das Dictionary in einen JSON-String um
+                config_json_string = json.dumps(config_payload)
+                
+                # 3. URL-kodiere den JSON-String, um ihn sicher in der URL zu verwenden
+                # HINWEIS: Laut Doku wird der gesamte JSON-Block als Wert für den "config"-Parameter erwartet.
+                # Wir bauen hier aber den RPC-Aufruf nach, wie er in der URL steht.
+                
+                rpc_payload = {
+                    "sta":{
+                        "ssid": user_ssid,
+                        "pass": user_password,
+                        "enable": True
+                    }
+                }
+                encoded_config = quote(json.dumps(rpc_payload))
+                
+                # 4. Baue die finale URL zusammen
+                configure_url = f"http://{shelly_ip}/rpc/WiFi.SetConfig?config={encoded_config}"
+                
+                log(f"[{caller_id}] Sende Gen2-Konfigurationsbefehl an {shelly_ip}...")
+
+                # ####################################################################
+                # ### ENDE DER ÄNDERUNG                                            ###
+                # ####################################################################
+                
                 try:
                     async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=20)) as session:
                         async with session.get(configure_url) as response:
+                            response_text = await response.text()
                             if response.status == 200:
-                                log(f"[{caller_id}] Befehl für {shelly_ssid} erfolgreich gesendet.")
+                                log(f"[{caller_id}] Befehl für {shelly_ssid} erfolgreich gesendet. Antwort: {response_text}")
                                 successful_shellies.append(shelly_ssid)
                             else:
-                                log(f"[{caller_id}] FEHLER bei {shelly_ssid}: Shelly-Antwort: {response.status}, Text: {await response.text()}")
+                                log(f"[{caller_id}] FEHLER bei {shelly_ssid}: Shelly-Antwort: {response.status}, Text: {response_text}")
                                 failed_shellies.append(shelly_ssid)
                 except Exception as e:
                     log(f"[{caller_id}] FEHLER beim Senden des HTTP-Befehls für {shelly_ssid}: {e}")
@@ -171,6 +204,7 @@ async def run_configuration_logic(caller_id: str) -> None:
             if failed_shellies: log(f"Fehlgeschlagen: {len(failed_shellies)} Geräte ({', '.join(failed_shellies)})")
             if os.path.exists(TASK_FILE): os.remove(TASK_FILE)
             log(f"[{caller_id}] Sperre wird freigegeben.")
+            
 
 
 async def scan_wifi_networks(interface: str) -> None:
