@@ -113,7 +113,7 @@ async def cleanup_wpa_supplicant(interface):
     await asyncio.sleep(2) # Kurze Pause nach dem Aufräumen
 
 
-# --- Konfigurations-Logik (MODIFIZIERT) ---
+# --- Konfigurations-Logik (KORRIGIERT) ---
 async def run_configuration_logic(caller_id="unknown"):
     log(f"[{caller_id}] Versuch, die Konfigurations-Sperre zu bekommen...")
     
@@ -159,7 +159,7 @@ network={{
 
                 log(f"[{caller_id}] Starte wpa_supplicant für Verbindung zu {shelly_ssid}...")
                 
-                # --- 2. wpa_supplicant starten und warten ---
+                # --- 2. wpa_supplicant starten und warten (KORRIGIERT: -N entfernt) ---
                 start_success = await run_command([
                     "wpa_supplicant",
                     "-i", interface,
@@ -167,7 +167,6 @@ network={{
                     "-B",                 # Im Hintergrund ausführen
                     "-P", WPA_SUPP_PID,   # PID-Datei schreiben
                     "-D", "nl80211",      # Treiber explizit setzen
-                    "-N"                  # NEU: Deaktiviere P2P-Funktionen, um "Resource busy" zu vermeiden
                 ])
 
                 if not start_success:
@@ -178,7 +177,7 @@ network={{
                 log(f"[{caller_id}] wpa_supplicant gestartet. Warte 10s auf Verbindung...")
                 await asyncio.sleep(10) # Längere Wartezeit für die wpa-Verbindung
 
-                # --- 3. Statische IP zuweisen (Shelly bietet kein DHCP im AP-Modus) ---
+                # --- 3. Statische IP zuweisen ---
                 log(f"[{caller_id}] Weise statische IP {ADDON_STATIC_IP} zu...")
                 ip_config_success = await run_command([
                     "ip", "addr", "add", ADDON_STATIC_IP, "dev", interface
@@ -260,7 +259,6 @@ async def wifi_scan_loop():
                 if proc.returncode == 0:
                     log("Scan erfolgreich.")
                     output = stdout.decode('utf-8')
-                    # HINWEIS: Die einfache SSID-Extraktion funktioniert nur mit iw in manchen Ausgaben
                     ssids = [line.split("SSID: ")[1] for line in output.split('\n') if "SSID: " in line and line.split("SSID: ")[1]]
                     with open(WIFI_LIST_FILE, 'w') as f:
                         json.dump(ssids, f)
