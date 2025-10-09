@@ -78,7 +78,7 @@ async def run_command(cmd):
         
     return proc.returncode == 0
 
-# --- MODIFIZIERTE Hilfsfunktion für wpa_supplicant Cleanup (mit Freigabe) ---
+# --- MODIFIZIERTE Hilfsfunktion für wpa_supplicant Cleanup (Zusätzliche Wartezeit) ---
 async def cleanup_wpa_supplicant(interface):
     log(f"Starte Cleanup für Schnittstelle {interface}...")
     
@@ -110,10 +110,10 @@ async def cleanup_wpa_supplicant(interface):
     if os.path.exists(WPA_SUPP_CONF):
         os.remove(WPA_SUPP_CONF)
     
-    await asyncio.sleep(2) # Kurze Pause nach dem Aufräumen
+    await asyncio.sleep(5) # WICHTIG: Zusätzliche Pause nach dem Aufräumen, damit die Schnittstelle sich erholen kann
 
 
-# --- Konfigurations-Logik (KORRIGIERT) ---
+# --- Konfigurations-Logik (KORRIGIERT: Reihenfolge der IP-Zuweisung geändert) ---
 async def run_configuration_logic(caller_id="unknown"):
     log(f"[{caller_id}] Versuch, die Konfigurations-Sperre zu bekommen...")
     
@@ -157,9 +157,22 @@ network={{
                 with open(WPA_SUPP_CONF, "w") as f:
                     f.write(wpa_config_content)
 
-                log(f"[{caller_id}] Starte wpa_supplicant für Verbindung zu {shelly_ssid}...")
+                # --- 2. Statische IP zuweisen BEVOR wpa_supplicant gestartet wird ---
+                # Da Shelly kein DHCP hat, ist dies kritisch für die Kommunikation
+                log(f"[{caller_id}] Weise statische IP {ADDON_STATIC_IP} zu...")
+                ip_config_success = await run_command([
+                    "ip", "addr", "add", ADDON_STATIC_IP, "dev", interface
+                ])
                 
-                # --- 2. wpa_supplicant starten und warten (KORRIGIERT: -N entfernt) ---
+                if not ip_config_success:
+                     log(f"[{caller_id}] FEHLER: Konnte die statische IP-Adresse nicht setzen.")
+                     await cleanup_wpa_supplicant(interface)
+                     continue
+                
+                await asyncio.sleep(2) # Kurze Pause nach IP-Zuweisung
+
+                # --- 3. wpa_supplicant starten und warten ---
+                log(f"[{caller_id}] Starte wpa_supplicant für Verbindung zu {shelly_ssid}...")
                 start_success = await run_command([
                     "wpa_supplicant",
                     "-i", interface,
@@ -171,34 +184,21 @@ network={{
 
                 if not start_success:
                     log(f"[{caller_id}] FEHLER: Konnte wpa_supplicant nicht starten.")
-                    await cleanup_wpa_supplicant(interface)
+                    # cleanup_wpa_supplicant wird hier bereits aufgerufen (weiter unten)
                     continue
                 
-                log(f"[{caller_id}] wpa_supplicant gestartet. Warte 10s auf Verbindung...")
-                await asyncio.sleep(10) # Längere Wartezeit für die wpa-Verbindung
-
-                # --- 3. Statische IP zuweisen ---
-                log(f"[{caller_id}] Weise statische IP {ADDON_STATIC_IP} zu...")
-                ip_config_success = await run_command([
-                    "ip", "addr", "add", ADDON_STATIC_IP, "dev", interface
-                ])
-                
-                if not ip_config_success:
-                     log(f"[{caller_id}] FEHLER: Konnte die statische IP-Adresse nicht setzen.")
-                     await cleanup_wpa_supplicant(interface)
-                     continue
-                
-                await asyncio.sleep(8) # Längere Wartezeit für Stabilität und Netzwerk-Discovery
+                log(f"[{caller_id}] wpa_supplicant gestartet. Warte 15s auf Verbindung...")
+                await asyncio.sleep(15) # Längere Wartezeit für wpa-Verbindung (von 10s auf 15s)
                 
                 # --- 4. Sende Konfigurationsbefehl (mit Retry) ---
                 configure_url = configure_url_base
                 success = False
 
-                for attempt in range(3):
+                for attempt in range(4): # Erhöhe auf 4 Versuche
                     log(f"[{caller_id}] Sende Konfigurationsbefehl an Shelly (Versuch {attempt + 1})...")
                     try:
-                        # Reduziertes Request-Timeout für schnelleren Retry
-                        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=5)) as session: 
+                        # Request-Timeout erhöht auf 10s, falls Shelly langsam reagiert
+                        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10)) as session: 
                             async with session.get(configure_url) as response:
                                 if response.status == 200:
                                     log(f"[{caller_id}] Befehl erfolgreich gesendet.")
@@ -210,11 +210,11 @@ network={{
                     except Exception as e:
                         log(f"[{caller_id}] FEHLER beim Senden des HTTP-Befehls (Versuch {attempt + 1}): {e}")
                         
-                    if not success and attempt < 2:
+                    if not success and attempt < 3:
                         await asyncio.sleep(5) # Kurze Wartezeit vor dem nächsten Retry
 
                 if not success:
-                    log(f"[{caller_id}] KRITISCHER FEHLER: Konnte Shelly nach 3 Versuchen nicht konfigurieren.")
+                    log(f"[{caller_id}] KRITISCHER FEHLER: Konnte Shelly nach {attempt + 1} Versuchen nicht konfigurieren.")
                 
                 # --- 5. Aufräumen der Verbindung ---
                 log(f"[{caller_id}] Trenne Verbindung und bereinige wpa_supplicant...")
