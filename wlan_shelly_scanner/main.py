@@ -143,6 +143,8 @@ async def run_configuration_logic(caller_id: str) -> None:
                 configure_url = f"http://{shelly_ip}/settings/sta?ssid={encoded_ssid}&key={encoded_pass}&enabled=1"
 
                 log(f"[{caller_id}] Sende Konfigurationsbefehl an {shelly_ip}...")
+
+                log(f">>>>>  {configure_url}")
                 try:
                     async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=20)) as session:
                         async with session.get(configure_url) as response:
