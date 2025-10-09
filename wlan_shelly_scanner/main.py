@@ -231,9 +231,7 @@ async def main_startup():
             json.dump([], f) # Schreibe ein leeres JSON-Array
     # --- NEUER BLOCK ENDE ---
 
-    # Nginx starten
-    log("Starte Nginx...")
-    subprocess.Popen(["nginx"])
+
     
     # API Server und Scan-Schleife starten
     app = web.Application()
