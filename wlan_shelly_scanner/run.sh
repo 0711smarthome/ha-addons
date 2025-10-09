@@ -4,13 +4,9 @@ set -e
 
 echo "Start-Skript wird ausgeführt (WPA-Supplicant-Version)..."
 
-# Erstelle den Ordner, falls nicht vorhanden (Ihre ursprüngliche Zeile)
-mkdir -p /var/run/dbus
-
 echo "Starte D-Bus System-Dienst..."
 # Prüfe, ob der Socket bereits existiert und versuche andernfalls den Daemon zu starten.
-# Wenn der Socket bereits existiert (weil der Host-D-Bus gemappt ist),
-# wird der Befehl fehlschlagen, aber das ist dann kein Problem für die Funktionalität.
+# WARNUNG: Der Fehler "Address in use" wird ignoriert, da der Host-Dienst aktiv sein kann.
 dbus-daemon --system || echo "WARNUNG: dbus-daemon konnte nicht gestartet werden (evtl. schon aktiv). Weiter."
 sleep 2
 
@@ -24,7 +20,6 @@ sleep 3 # Wartezeit für die Hardware-Initialisierung
 
 echo "===== DIAGNOSE-CHECK ====="
 echo "--> Prüfe laufende Prozesse:"
-# Wir erwarten KEINEN NetworkManager mehr.
 ps aux | grep -E "dbus" || echo "DIAGNOSE: D-Bus läuft."
 echo "--> Prüfe, ob der D-Bus Socket existiert:"
 if [ -S /var/run/dbus/system_bus_socket ]; then
