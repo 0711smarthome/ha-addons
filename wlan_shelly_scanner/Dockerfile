@@ -3,7 +3,7 @@ FROM alpine:3.19
 
 LABEL Ihr Name <IhreEmail@example.com>
 
-SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+SHELL ["/bin/sh", "-c"]
 
 RUN apk update && apk add --no-cache \
     networkmanager \
