@@ -12,7 +12,13 @@ function checkPin() {
     if (pinInput === HARDCODED_PIN) {
         document.getElementById('step1').style.display = 'none';
         document.getElementById('step2').style.display = 'block';
-        loadWifiNetworks();
+        
+        // WIR LADEN DIE LISTE HIER NICHT MEHR AUTOMATISCH
+        // loadWifiNetworks(); // <-- Diese Zeile entfernen oder auskommentieren
+        
+        // Stattdessen zeigen wir eine Aufforderung an
+        document.getElementById('wifiList').innerHTML = '<p>Bitte starte einen neuen Scan, um nach Shelly-Netzwerken zu suchen.</p>';
+
     } else {
         pinError.textContent = 'Falsche PIN!';
         document.getElementById('pinInput').value = '';
@@ -26,15 +32,20 @@ async function triggerScan() {
     const wifiListDiv = document.getElementById('wifiList');
     wifiListDiv.innerHTML = '<p>Manueller Scan gestartet, bitte warten...</p>';
     try {
-        // HIER DIE KORREKTUR: Führender Schrägstrich entfernt
+        // Sage dem Backend, es soll einen neuen Scan starten
         await fetch('api/scan');
         
-        setTimeout(loadWifiNetworks, 2000);
+        // Gib dem Scan etwas Zeit (z.B. 5-7 Sekunden, da er bei dir ca. 5s dauert)
+        // und lade ERST DANN die Ergebnisse.
+        setTimeout(loadWifiNetworks, 7000); 
+
     } catch (error) {
         wifiListDiv.innerHTML = `<p class="error-message">Fehler beim Auslösen des Scans: ${error.message}</p>`;
         console.error("Fehler beim Auslösen des Scans:", error);
     }
 }
+
+// Die Funktion loadWifiNetworks() selbst bleibt unverändert.
 
 /**
  * Lädt die Liste der gefundenen WLAN-Netzwerke vom Backend.

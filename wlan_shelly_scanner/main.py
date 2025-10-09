@@ -159,7 +159,7 @@ async def run_configuration_logic():
     finally:
         log("--- Konfiguration abgeschlossen. ---")
         if os.path.exists(TASK_FILE): os.remove(TASK_FILE)
-        
+
 # --- WLAN-Scan-Schleife (aus run.sh) ---
 # main.py
 
@@ -235,10 +235,13 @@ async def start_background_tasks(app):
     app['wifi_scanner'] = asyncio.create_task(wifi_scan_loop())
 
 async def main_startup():
-    log(".....................................................................................................Add-on wird gestartet...")
-    log(f"DEBUG: Supervisor Token vorhanden: {'Ja' if SUPERVISOR_TOKEN else 'Nein'}")
-    if SUPERVISOR_TOKEN:
-        log(f"DEBUG: Token beginnt mit: {SUPERVISOR_TOKEN[:5]}, endet mit: {SUPERVISOR_TOKEN[-5:]}")
+    log(".....................................................................................................Add-on wird gestartet.......................................................................................................")
+
+    if not os.path.exists(WIFI_LIST_FILE):
+        log("wifi_list.json nicht gefunden, erstelle eine leere Datei.")
+        with open(WIFI_LIST_FILE, "w") as f:
+            json.dump([], f) # Schreibe ein leeres JSON-Array
+    # --- NEUER BLOCK ENDE ---
 
     # Nginx starten
     log("Starte Nginx...")
