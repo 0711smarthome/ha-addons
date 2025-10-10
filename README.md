@@ -1,1 +1,1 @@
-# my-ha-addons
+# ha-addons
