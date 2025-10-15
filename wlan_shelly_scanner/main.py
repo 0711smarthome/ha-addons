@@ -206,33 +206,42 @@ async def run_configuration_logic(caller_id: str) -> None:
             log(f"[{caller_id}] Sperre wird freigegeben.")
             
 
-
-async def scan_wifi_networks(interface: str) -> None:
-    """Scannt nach WLAN-Netzwerken mit nmcli und schreibt das Ergebnis in eine Datei."""
-    log("Manueller Scan wird ausgelöst...")
+async def scan_wifi_networks(interface: str) -> (bool, List[str], str):
+    """
+    Scannt nach WLAN-Netzwerken und gibt (Erfolg, [SSID-Liste], "Fehlermeldung") zurück.
+    """
+    log("Scan wird ausgelöst...")
     try:
         # --rescan yes erzwingt einen frischen Scan
         success, stdout, stderr = await run_command([
             "nmcli", "-f", "SSID", "dev", "wifi", "list", "--rescan", "yes"
         ])
+
         if success:
             log("Scan erfolgreich.")
             lines = stdout.strip().split('\n')
             # Filtere leere Zeilen und den Header 'SSID' heraus
             ssids = [line.strip() for line in lines if line.strip() and line.strip() != 'SSID']
+            
+            # Die Datei wird weiterhin geschrieben, falls sie für eine spätere Funktion nützlich ist
             with open(WIFI_LIST_FILE, 'w') as f:
                 json.dump(ssids, f)
+            
+            return True, ssids, ""
         else:
             log(f"FEHLER: 'nmcli scan' fehlgeschlagen. Fehler: {stderr}")
+            return False, [], stderr
+            
     except Exception as e:
         log(f"Fehler während des Scans: {e}")
+        return False, [], str(e)
 
 
 async def background_worker_loop() -> None:
     """
-    Endlosschleife, die auf Trigger-Dateien wartet, um Scans oder Konfigurationen zu starten.
+    Endlosschleife, die auf Trigger-Dateien für die Konfiguration wartet.
     """
-    log("Hintergrund-Dienst gestartet. Warte auf Trigger...")
+    log("Hintergrund-Dienst gestartet. Warte auf Konfigurations-Trigger...")
     with open(CONFIG_PATH) as f:
         config = json.load(f)
     interface = config.get("interface", "wlan0")
@@ -243,18 +252,23 @@ async def background_worker_loop() -> None:
             task_id = f"task_{random.randint(1000, 9999)}"
             asyncio.create_task(run_configuration_logic(caller_id=task_id))
 
-        elif os.path.exists(SCAN_TRIGGER_FILE):
-            os.remove(SCAN_TRIGGER_FILE)
-            await scan_wifi_networks(interface)
-        
         await asyncio.sleep(1)
 
 
 # --- API-Server ---
 
 async def handle_scan(request: web.Request) -> web.Response:
-    with open(SCAN_TRIGGER_FILE, "w") as f: pass
-    return web.Response(status=204)
+    """Führt einen Scan aus und gibt das Ergebnis direkt als JSON zurück."""
+    with open(CONFIG_PATH) as f:
+        config = json.load(f)
+    interface = config.get("interface", "wlan0")
+
+    success, ssids, error_message = await scan_wifi_networks(interface)
+
+    if success:
+        return web.json_response(ssids)
+    else:
+        return web.json_response({"error": "Scan fehlgeschlagen", "details": error_message}, status=500)
 
 async def handle_configure(request: web.Request) -> web.Response:
     try:

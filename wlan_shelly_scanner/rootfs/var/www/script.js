@@ -26,80 +26,85 @@ function checkPin() {
 }
 
 /**
- * Löst einen neuen WLAN-Scan im Backend aus und aktualisiert danach die Liste.
+ * Löst einen neuen WLAN-Scan im Backend aus und zeigt das Ergebnis direkt an.
  */
 async function triggerScan() {
     const wifiListDiv = document.getElementById('wifiList');
-    wifiListDiv.innerHTML = '<p>Manueller Scan gestartet, bitte warten...</p>';
+    const scanButton = document.querySelector('.scan-button');
+    
+    wifiListDiv.innerHTML = '<p>Scan wird ausgeführt, bitte warten...</p>';
+    scanButton.disabled = true; // Button deaktivieren, um Doppelklicks zu verhindern
+
     try {
-        // Sage dem Backend, es soll einen neuen Scan starten
-        await fetch('api/scan');
+        // Der fetch-Aufruf löst jetzt den Scan aus UND wartet auf die Antwort
+        const response = await fetch('api/scan');
         
-        // Gib dem Scan etwas Zeit (z.B. 5-7 Sekunden, da er bei dir ca. 5s dauert)
-        // und lade ERST DANN die Ergebnisse.
-        setTimeout(loadWifiNetworks, 7000); 
+        if (!response.ok) {
+            // Versuche, eine detaillierte Fehlermeldung vom Backend zu bekommen
+            const errorData = await response.json().catch(() => null);
+            throw new Error(errorData?.details || `HTTP-Fehler ${response.status}`);
+        }
+        
+        const ssids = await response.json();
+        
+        // Die Funktion zur Anzeige der Liste direkt mit den neuen Daten aufrufen
+        displayWifiList(ssids);
 
     } catch (error) {
-        wifiListDiv.innerHTML = `<p class="error-message">Fehler beim Auslösen des Scans: ${error.message}</p>`;
+        wifiListDiv.innerHTML = `<p class="error-message">Fehler beim Scan: ${error.message}</p>`;
         console.error("Fehler beim Auslösen des Scans:", error);
+    } finally {
+        scanButton.disabled = false; // Button in jedem Fall wieder aktivieren
     }
 }
 
-// Die Funktion loadWifiNetworks() selbst bleibt unverändert.
+// script.js
 
 /**
- * Lädt die Liste der gefundenen WLAN-Netzwerke vom Backend.
+ * Nimmt eine Liste von SSIDs entgegen und rendert die Checkbox-Liste im HTML.
+ * @param {string[]} ssids - Ein Array von WLAN-Namen.
  */
-async function loadWifiNetworks() {
+function displayWifiList(ssids) {
     const wifiListDiv = document.getElementById('wifiList');
-    wifiListDiv.innerHTML = '<p>Suche nach WLAN-Netzwerken...</p>';
 
-    try {
-        // Dieser Aufruf war bereits korrekt (ohne führenden Schrägstrich)
-        const response = await fetch('wifi_list.json?' + new Date().getTime());
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        const ssids = await response.json();
-        
-        // ... Rest der Funktion bleibt unverändert ...
-        ssids.sort((a, b) => {
-            const aIsShelly = a.toLowerCase().includes('shelly');
-            const bIsShelly = b.toLowerCase().includes('shelly');
-            if (aIsShelly && !bIsShelly) return -1;
-            if (!aIsShelly && bIsShelly) return 1;
-            return a.localeCompare(b);
-        });
-        wifiListDiv.innerHTML = ''; 
-        if (ssids.length === 0) {
-            wifiListDiv.innerHTML = '<p>Keine WLAN-Netzwerke gefunden.</p>';
-            return;
-        }
-        ssids.forEach(ssid => {
-            const isShelly = ssid.toLowerCase().includes('shelly');
-            const itemDiv = document.createElement('div');
-            itemDiv.className = 'wifi-item';
-            if (!isShelly) {
-                itemDiv.classList.add('disabled');
-            }
-            const checkbox = document.createElement('input');
-            checkbox.type = 'checkbox';
-            checkbox.id = ssid;
-            checkbox.name = 'selected_shelly';
-            checkbox.value = ssid;
-            checkbox.disabled = !isShelly;
-            const label = document.createElement('label');
-            label.htmlFor = ssid;
-            label.textContent = ssid;
-            label.prepend(checkbox);
-            itemDiv.appendChild(label);
-            wifiListDiv.appendChild(itemDiv);
-        });
+    // Sortiere Netzwerke, zeige Shelly-Netze zuerst an
+    ssids.sort((a, b) => {
+        const aIsShelly = a.toLowerCase().includes('shelly');
+        const bIsShelly = b.toLowerCase().includes('shelly');
+        if (aIsShelly && !bIsShelly) return -1;
+        if (!aIsShelly && bIsShelly) return 1;
+        return a.localeCompare(b);
+    });
 
-    } catch (error) {
-        wifiListDiv.innerHTML = `<p class="error-message">Fehler beim Laden der WLAN-Liste: ${error.message}</p>`;
-        console.error("Fehler:", error);
+    wifiListDiv.innerHTML = ''; // Leere die Liste vor dem Neuaufbau
+    if (ssids.length === 0) {
+        wifiListDiv.innerHTML = '<p>Keine WLAN-Netzwerke gefunden. Bitte stelle sicher, dass die Shelly-Geräte im Setup-Modus sind und starte einen neuen Scan.</p>';
+        return;
     }
+
+    ssids.forEach(ssid => {
+        const isShelly = ssid.toLowerCase().includes('shelly');
+        const itemDiv = document.createElement('div');
+        itemDiv.className = 'wifi-item';
+        if (!isShelly) {
+            itemDiv.classList.add('disabled');
+        }
+
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.id = ssid;
+        checkbox.name = 'selected_shelly';
+        checkbox.value = ssid;
+        checkbox.disabled = !isShelly;
+        
+        const label = document.createElement('label');
+        label.htmlFor = ssid;
+        label.textContent = ssid;
+        label.prepend(checkbox);
+        
+        itemDiv.appendChild(label);
+        wifiListDiv.appendChild(itemDiv);
+    });
 }
 
 /**
