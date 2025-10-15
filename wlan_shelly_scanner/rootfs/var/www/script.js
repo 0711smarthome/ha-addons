@@ -227,10 +227,22 @@ document.getElementById('wifiForm').addEventListener('submit', async function(ev
     }
 });
 
-// script.js
 
 // ====== NEUE FUNKTIONEN FÜR DIE GERÄTEVERWALTUNG ======
+/**
+ * Schreibt eine Nachricht in das Admin-Debug-Fenster.
+ * @param {string} message Die Nachricht, die geloggt werden soll.
+ */
+function adminLog(message) {
+    const logOutput = document.getElementById('adminDebugLog');
+    if (!logOutput) return;
 
+    const timestamp = new Date().toLocaleTimeString();
+    logOutput.textContent += `[${timestamp}] ${message}\n`;
+    
+    // Automatisch nach unten scrollen
+    logOutput.scrollTop = logOutput.scrollHeight;
+}
 /**
  * Lädt die verschlüsselte Geräteliste vom Server.
  */
@@ -379,6 +391,7 @@ async function scanForNewDevices() {
     const originalText = scanButton.textContent;
     scanButton.textContent = 'Scanne...';
     scanButton.disabled = true;
+    adminLog("Manueller Scan für neue Geräte gestartet...");
 
     try {
         const response = await fetch('api/admin/scan', {
@@ -387,21 +400,28 @@ async function scanForNewDevices() {
             body: JSON.stringify({ devices: adminDeviceList })
         });
 
-        if (!response.ok) {
-            throw new Error(`Scan fehlgeschlagen: ${response.statusText}`);
+        const responseData = await response.json();
+
+        // Logge alle Einträge vom Backend
+        if (responseData.logs && responseData.logs.length > 0) {
+            responseData.logs.forEach(logMsg => adminLog(logMsg));
         }
 
-        const newDevices = await response.json();
+        if (!response.ok) {
+            throw new Error(responseData.details || 'Scan auf dem Server fehlgeschlagen');
+        }
+
+        const newDevices = responseData.new_devices || [];
         if (newDevices.length > 0) {
             newDevices.forEach(dev => adminDeviceList.push(dev));
-            alert(`${newDevices.length} neue(s) Shelly-Gerät(e) gefunden und zur Liste hinzugefügt.`);
+            adminLog(`ERFOLG: ${newDevices.length} neue(s) Shelly-Gerät(e) gefunden und zur Liste hinzugefügt.`);
             renderDeviceTable();
         } else {
-            alert('Keine neuen Shelly-Geräte im AP-Modus gefunden.');
+            adminLog("INFO: Scan beendet. Keine *neuen* Shelly-Geräte im AP-Modus gefunden.");
         }
 
     } catch (error) {
-        alert(`Fehler beim Scannen: ${error.message}`);
+        adminLog(`FEHLER beim Scannen: ${error.message}`);
         console.error('Scan-Fehler:', error);
     } finally {
         scanButton.textContent = originalText;
@@ -414,9 +434,10 @@ async function scanForNewDevices() {
  */
 async function saveChangesToServer() {
     if (!userPin) {
-        alert("Fehler: Keine gültige PIN vorhanden. Bitte lade die Liste neu.");
+        adminLog("FEHLER: Speichern nicht möglich. Keine gültige PIN vorhanden. Bitte lade die Liste neu.");
         return;
     }
+    adminLog("Speichere Änderungen auf dem Server...");
     
     try {
         const response = await fetch('api/admin/devices/save', {
@@ -428,11 +449,11 @@ async function saveChangesToServer() {
         if (!response.ok) {
             throw new Error(`Speichern fehlgeschlagen: ${response.statusText}`);
         }
-
-        alert(`Erfolgreich ${adminDeviceList.length} Gerät(e) gespeichert.`);
+        
+        adminLog(`ERFOLG: ${adminDeviceList.length} Gerät(e) erfolgreich verschlüsselt und gespeichert.`);
 
     } catch (error) {
-        alert(`Fehler beim Speichern: ${error.message}`);
+        adminLog(`FEHLER beim Speichern: ${error.message}`);
         console.error('Speicher-Fehler:', error);
     }
 }

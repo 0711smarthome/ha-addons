@@ -12,7 +12,7 @@ body {
 
 .container {
     width: 100%;
-    max-width: 650px;
+    max-width: 1280px;
     background-color: #fff;
     padding: 25px;
     border-radius: 8px;
@@ -111,7 +111,8 @@ hr {
     margin-top: 25px;
 }
 
-#logOutput {
+#logOutput,
+#adminDebugLog {
     background-color: #222;
     color: #00ff00; /* Grün, wie bei einem Terminal */
     font-family: "Courier New", Courier, monospace;
@@ -122,6 +123,7 @@ hr {
     overflow-y: auto; /* Scrollbar, falls der Text zu lang wird */
     white-space: pre-wrap; /* Zeilenumbrüche erhalten */
     border: 1px solid #444;
+    margin-top: 15px; /* Etwas Abstand nach oben */
 }
 /* Stile für das Einstellungs-Icon */
 #settingsIcon {

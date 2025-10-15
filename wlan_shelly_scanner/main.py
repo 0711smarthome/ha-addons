@@ -240,15 +240,17 @@ async def run_configuration_logic(caller_id: str) -> None:
             log(f"[{caller_id}] Sperre wird freigegeben.")
             
 
-async def scan_wifi_networks(interface: str, existing_macs: List[str] = None) -> (bool, List[Dict[str, Any]], str):
+async def scan_wifi_networks(interface: str, existing_macs: List[str] = None) -> (bool, List[Dict[str, Any]], List[str], str):
     """
     Scannt nach WLAN-Netzwerken, parst Shelly-SSIDs und ignoriert bereits bekannte MACs.
-    Gibt eine Liste von Dictionaries mit Gerätedetails zurück.
+    Gibt (Erfolg, [neue Geräte], [Log-Einträge], "Fehlermeldung") zurück.
     """
     if existing_macs is None:
         existing_macs = []
 
+    log_entries = []
     log(f"Scan für neue Shelly-Geräte wird ausgelöst (ignoriere {len(existing_macs)} bekannte MACs)...")
+    log_entries.append(f"Starte WLAN-Scan auf Interface '{interface}'...")
     found_devices = []
     
     try:
@@ -257,30 +259,41 @@ async def scan_wifi_networks(interface: str, existing_macs: List[str] = None) ->
         ])
 
         if not success:
-            log(f"FEHLER: 'nmcli scan' fehlgeschlagen. Fehler: {stderr}")
-            return False, [], stderr
+            msg = f"FEHLER: 'nmcli scan' fehlgeschlagen. Fehler: {stderr}"
+            log(msg)
+            log_entries.append(msg)
+            return False, [], log_entries, stderr
 
         lines = stdout.strip().split('\n')
         ssids = [line.strip() for line in lines if line.strip() and line.strip() != 'SSID']
+        log_entries.append(f"Scan abgeschlossen. {len(ssids)} Netzwerke gefunden.")
 
         for ssid in ssids:
+            # Logge JEDES gefundene Netzwerk
+            log_entries.append(f"- Gefundenes WLAN: '{ssid}'")
             generation, model, mac = parse_shelly_ssid(ssid)
-            if mac and mac not in existing_macs:
-                log(f"Neues Gerät gefunden: SSID={ssid}, MAC={mac}")
-                found_devices.append({
-                    "mac": mac,
-                    "ssid": ssid,
-                    "generation": generation,
-                    "model": model,
-                    "bemerkung": "" # Leeres Bemerkungsfeld für neue Geräte
-                })
+            
+            if mac:
+                if mac not in existing_macs:
+                    log_entries.append(f"  -> Shelly erkannt! Gen: {generation}, Modell: {model}, MAC: {mac}")
+                    found_devices.append({
+                        "mac": mac,
+                        "ssid": ssid,
+                        "generation": generation,
+                        "model": model,
+                        "bemerkung": ""
+                    })
+                else:
+                    log_entries.append("  -> Shelly bereits in der Liste, wird ignoriert.")
         
-        log(f"Scan abgeschlossen. {len(found_devices)} neue Geräte gefunden.")
-        return True, found_devices, ""
+        log(f"{len(found_devices)} neue Geräte zur Liste hinzugefügt.")
+        return True, found_devices, log_entries, ""
             
     except Exception as e:
-        log(f"Fehler während des Scans: {e}")
-        return False, [], str(e)
+        msg = f"Ein schwerer Fehler ist während des Scans aufgetreten: {e}"
+        log(msg)
+        log_entries.append(msg)
+        return False, [], log_entries, str(e)
 
 
 
@@ -388,8 +401,9 @@ async def handle_admin_save_devices(request: web.Request) -> web.Response:
         log(f"Fehler beim Speichern der Geräte: {e}")
         return web.Response(status=500)
 
+
 async def handle_admin_scan(request: web.Request) -> web.Response:
-    """Scannt nach NEUEN Geräten, die noch nicht in der übermittelten Liste sind."""
+    """Scannt nach NEUEN Geräten und gibt eine detaillierte Antwort mit Logs zurück."""
     try:
         data = await request.json()
         existing_devices = data.get("devices", [])
@@ -398,16 +412,21 @@ async def handle_admin_scan(request: web.Request) -> web.Response:
         with open(CONFIG_PATH) as f: config = json.load(f)
         interface = config.get("interface", "wlan0")
 
-        success, new_devices, error_message = await scan_wifi_networks(interface, existing_macs)
+        success, new_devices, log_entries, error_message = await scan_wifi_networks(interface, existing_macs)
+
+        response_data = {
+            "new_devices": new_devices,
+            "logs": log_entries
+        }
 
         if success:
-            return web.json_response(new_devices)
+            return web.json_response(response_data)
         else:
-            return web.json_response({"error": "Scan fehlgeschlagen", "details": error_message}, status=500)
+            return web.json_response({"error": "Scan fehlgeschlagen", "details": error_message, "logs": log_entries}, status=500)
 
     except Exception as e:
         log(f"API Fehler /api/admin/scan: {e}")
-        return web.Response(status=500, text=str(e))
+        return web.json_response({"error": str(e)}, status=500)
 
 
 
