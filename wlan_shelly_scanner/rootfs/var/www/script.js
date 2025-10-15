@@ -1,253 +1,200 @@
 const HARDCODED_PIN = "0711";
-const HARDCODED_ADMIN_PASSWORD = "admin"; // Neues Admin-Passwort
+const HARDCODED_ADMIN_PASSWORD = "admin";
 
-// Globale Variable für das Polling-Interval, damit wir es stoppen können
+// === Globale Variablen ===
 let progressInterval = null;
-let adminDeviceList = [];
-let userPin = "";
+let adminDeviceList = []; // Für Admin-Modus
+let userPin = ""; // Für Admin-Modus
+let userShellyDeviceList = []; // Für User-Modus
 
-/**
- * Blendet den Benutzermodus aus und zeigt den Admin-Login an.
- */
+// ====== MODUS-WECHSEL FUNKTIONEN ======
+
 function showAdminLogin() {
     document.getElementById('userModeContainer').style.display = 'none';
-    document.getElementById('adminPanel').style.display = 'none'; // Admin-Panel auch ausblenden
+    document.getElementById('adminPanel').style.display = 'none';
     document.getElementById('adminLogin').style.display = 'block';
     document.getElementById('adminError').textContent = '';
     document.getElementById('adminPasswordInput').value = '';
 }
 
-/**
- * Überprüft das eingegebene Admin-Passwort und zeigt die PIN-Abfrage für die Geräteliste.
- */
 function checkAdminPassword() {
     const adminPassword = document.getElementById('adminPasswordInput').value;
     const adminError = document.getElementById('adminError');
     if (adminPassword === HARDCODED_ADMIN_PASSWORD) {
         document.getElementById('adminLogin').style.display = 'none';
-        
-        // Zeige jetzt die PIN-Abfrage für die Geräteliste an
         document.getElementById('adminPanel').style.display = 'block';
         document.getElementById('adminPinPrompt').style.display = 'block';
-        document.getElementById('adminDeviceManager').style.display = 'none'; // Verwalter noch ausblenden
+        document.getElementById('adminDeviceManager').style.display = 'none';
         document.getElementById('adminPinError').textContent = '';
         document.getElementById('adminUserPinInput').value = '';
-
     } else {
         adminError.textContent = 'Falsches Passwort!';
         document.getElementById('adminPasswordInput').value = '';
     }
 }
 
-/**
- * Setzt die Ansicht auf den ursprünglichen Benutzermodus zurück.
- */
 function showUserMode() {
     document.getElementById('adminLogin').style.display = 'none';
     document.getElementById('adminPanel').style.display = 'none';
     document.getElementById('userModeContainer').style.display = 'block';
-    
-    // Setze den User-Modus auf den initialen Zustand zurück (PIN-Abfrage)
-    document.getElementById('step1').style.display = 'block';
-    document.getElementById('step2').style.display = 'none';
-    document.getElementById('pinInput').value = ''; // PIN-Feld leeren
-    document.getElementById('pinError').textContent = '';
+    restartUserMode(); // Setzt den User-Modus sauber zurück
 }
 
-/**
- * Überprüft die eingegebene PIN und zeigt bei Erfolg den Hauptbereich an.
- */
+// ====== BENUTZERMODUS FUNKTIONEN ======
+
 function checkPin() {
     const pinInput = document.getElementById('pinInput').value;
     const pinError = document.getElementById('pinError');
     if (pinInput === HARDCODED_PIN) {
         document.getElementById('step1').style.display = 'none';
         document.getElementById('step2').style.display = 'block';
-        
-        // WIR LADEN DIE LISTE HIER NICHT MEHR AUTOMATISCH
-        // loadWifiNetworks(); // <-- Diese Zeile entfernen oder auskommentieren
-        
-        // Stattdessen zeigen wir eine Aufforderung an
-        document.getElementById('wifiList').innerHTML = '<p>Bitte starte einen neuen Scan, um nach Shelly-Netzwerken zu suchen.</p>';
-
     } else {
         pinError.textContent = 'Falsche PIN!';
         document.getElementById('pinInput').value = '';
     }
 }
 
-/**
- * Löst einen neuen WLAN-Scan im Backend aus und zeigt das Ergebnis direkt an.
- */
-async function triggerScan() {
-    const wifiListDiv = document.getElementById('wifiList');
-    const scanButton = document.querySelector('.scan-button');
-    
-    wifiListDiv.innerHTML = '<p>Scan wird ausgeführt, bitte warten...</p>';
-    scanButton.disabled = true; // Button deaktivieren, um Doppelklicks zu verhindern
+async function loadAndScanForUser() {
+    const pin = document.getElementById('pinInput').value;
+    const userSsid = document.getElementById('userSsid').value;
+    const userPassword = document.getElementById('userPassword').value;
 
-    try {
-        // Der fetch-Aufruf löst jetzt den Scan aus UND wartet auf die Antwort
-        const response = await fetch('api/scan');
-        
-        if (!response.ok) {
-            // Versuche, eine detaillierte Fehlermeldung vom Backend zu bekommen
-            const errorData = await response.json().catch(() => null);
-            throw new Error(errorData?.details || `HTTP-Fehler ${response.status}`);
-        }
-        
-        const ssids = await response.json();
-        
-        // Die Funktion zur Anzeige der Liste direkt mit den neuen Daten aufrufen
-        displayWifiList(ssids);
-
-    } catch (error) {
-        wifiListDiv.innerHTML = `<p class="error-message">Fehler beim Scan: ${error.message}</p>`;
-        console.error("Fehler beim Auslösen des Scans:", error);
-    } finally {
-        scanButton.disabled = false; // Button in jedem Fall wieder aktivieren
-    }
-}
-
-// script.js
-
-/**
- * Nimmt eine Liste von SSIDs entgegen und rendert die Checkbox-Liste im HTML.
- * @param {string[]} ssids - Ein Array von WLAN-Namen.
- */
-function displayWifiList(ssids) {
-    const wifiListDiv = document.getElementById('wifiList');
-
-    // Sortiere Netzwerke, zeige Shelly-Netze zuerst an
-    ssids.sort((a, b) => {
-        const aIsShelly = a.toLowerCase().includes('shelly');
-        const bIsShelly = b.toLowerCase().includes('shelly');
-        if (aIsShelly && !bIsShelly) return -1;
-        if (!aIsShelly && bIsShelly) return 1;
-        return a.localeCompare(b);
-    });
-
-    wifiListDiv.innerHTML = ''; // Leere die Liste vor dem Neuaufbau
-    if (ssids.length === 0) {
-        wifiListDiv.innerHTML = '<p>Keine WLAN-Netzwerke gefunden. Bitte stelle sicher, dass die Shelly-Geräte im Setup-Modus sind und starte einen neuen Scan.</p>';
+    if (!userSsid || !userPassword) {
+        alert("Bitte gib zuerst deine WLAN-Zugangsdaten ein.");
         return;
     }
 
-    ssids.forEach(ssid => {
-        const isShelly = ssid.toLowerCase().includes('shelly');
-        const itemDiv = document.createElement('div');
-        itemDiv.className = 'wifi-item';
-        if (!isShelly) {
-            itemDiv.classList.add('disabled');
-        }
+    // 1. Lade die vom Admin vorbereitete Geräteliste
+    try {
+        const response = await fetch('api/admin/devices/load', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ pin: pin })
+        });
+        if (!response.ok) throw new Error('Gespeicherte Geräteliste konnte nicht geladen werden. Wurde sie im Admin-Modus gespeichert?');
+        userShellyDeviceList = await response.json();
+    } catch (e) {
+        alert(e.message);
+        return;
+    }
 
-        const checkbox = document.createElement('input');
-        checkbox.type = 'checkbox';
-        checkbox.id = ssid;
-        checkbox.name = 'selected_shelly';
-        checkbox.value = ssid;
-        checkbox.disabled = !isShelly;
-        
-        const label = document.createElement('label');
-        label.htmlFor = ssid;
-        label.textContent = ssid;
-        label.prepend(checkbox);
-        
-        itemDiv.appendChild(label);
-        wifiListDiv.appendChild(itemDiv);
-    });
+    // 2. Scanne nach allen aktuell sichtbaren WLANs
+    let availableNetworks = [];
+    try {
+        const response = await fetch('api/scan');
+        if (!response.ok) throw new Error('WLAN-Scan fehlgeschlagen.');
+        availableNetworks = await response.json();
+    } catch(e) {
+        alert(e.message);
+        return;
+    }
+    
+    // 3. Wechsle die Ansicht und zeige die gemischte Liste an
+    document.getElementById('userWifiCredentials').style.display = 'none';
+    document.getElementById('userDeviceSelection').style.display = 'block';
+    renderUserDeviceList(availableNetworks);
 }
 
-/**
- * Fragt den Konfigurationsfortschritt vom Backend ab und zeigt ihn an.
- */
-async function updateProgress() {
-    const logOutput = document.getElementById('logOutput');
+function renderUserDeviceList(availableNetworks) {
+    const listDiv = document.getElementById('userShellyList');
+    const notFoundDiv = document.getElementById('notFoundDevices');
+    const notFoundList = document.getElementById('notFoundList');
+    listDiv.innerHTML = '';
+    notFoundList.innerHTML = '';
+    let anyNotFound = false;
+
+    const foundSsids = new Map(availableNetworks.map(net => [net.ssid, net.signal]));
+
+    userShellyDeviceList.forEach(device => {
+        if (foundSsids.has(device.ssid)) {
+            const signal = foundSsids.get(device.ssid);
+            const signalQuality = signal > 70 ? 'good' : signal > 40 ? 'medium' : 'poor';
+            const itemHtml = `
+                <div class="wifi-item">
+                    <label>
+                        <input type="checkbox" name="user_selected_shelly" value="${device.mac}" checked>
+                        <strong>${device.haName || device.model}</strong> (${device.bemerkung || 'Keine Bemerkung'})
+                        <span class="signal-strength ${signalQuality}">Signal: ${signal}%</span>
+                    </label>
+                </div>
+            `;
+            listDiv.innerHTML += itemHtml;
+        } else {
+            anyNotFound = true;
+            const itemHtml = `<li>${device.haName || device.model} (${device.bemerkung || 'Keine Bemerkung'})</li>`;
+            notFoundList.innerHTML += itemHtml;
+        }
+    });
+    
+    notFoundDiv.style.display = anyNotFound ? 'block' : 'none';
+}
+
+async function startUserConfiguration() {
+    const userSsid = document.getElementById('userSsid').value;
+    const userPassword = document.getElementById('userPassword').value;
+
+    const selectedMacs = Array.from(document.querySelectorAll('input[name="user_selected_shelly"]:checked')).map(cb => cb.value);
+    const devicesToConfigure = userShellyDeviceList.filter(dev => selectedMacs.includes(dev.mac));
+
+    if (devicesToConfigure.length === 0) {
+        alert('Bitte wähle mindestens ein gefundenes Gerät aus.');
+        return;
+    }
+    
+    document.getElementById('userDeviceSelection').style.display = 'none';
+    document.getElementById('userProgressArea').style.display = 'block';
+    document.getElementById('userLogOutput').textContent = 'Initialisiere Konfiguration...\n';
+    
+    await fetch('api/configure', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            selectedDevices: devicesToConfigure,
+            userSsid: userSsid,
+            userPassword: userPassword
+        })
+    });
+
+    progressInterval = setInterval(updateProgressForUser, 2000);
+}
+
+async function updateProgressForUser() {
+    const logOutput = document.getElementById('userLogOutput');
     try {
-        // HIER DIE KORREKTUR: Führender Schrägstrich entfernt
         const response = await fetch('api/progress?' + new Date().getTime());
         const progressText = await response.text();
         logOutput.textContent = progressText;
         logOutput.scrollTop = logOutput.scrollHeight;
         
-        if (progressText.includes("abgeschlossen")) {
+        if (progressText.includes("Konfiguration abgeschlossen")) {
             clearInterval(progressInterval);
-            document.querySelector('#wifiForm button[type="submit"]').disabled = false;
         }
     } catch (error) {
         logOutput.textContent += "\nFehler beim Abrufen des Fortschritts.";
         clearInterval(progressInterval);
-        document.querySelector('#wifiForm button[type="submit"]').disabled = false;
     }
 }
 
-/**
- * Event Listener für das Absenden des Konfigurations-Formulars.
- */
-document.getElementById('wifiForm').addEventListener('submit', async function(event) {
-    event.preventDefault(); 
-    
-    if (progressInterval) {
-        clearInterval(progressInterval);
-    }
-
-    const selectedShellies = Array.from(document.querySelectorAll('input[name="selected_shelly"]:checked')).map(cb => cb.value);
-    const userSsid = document.getElementById('userSsid').value;
-    const userPassword = document.getElementById('userPassword').value;
-
-    if (selectedShellies.length === 0) {
-        alert('Bitte wähle mindestens ein Shelly-Gerät aus.');
-        return;
-    }
-
-    const progressArea = document.getElementById('progressArea');
-    progressArea.style.display = 'block';
-    document.getElementById('logOutput').textContent = 'Initialisiere Konfiguration...';
-    document.querySelector('#wifiForm button[type="submit"]').disabled = true;
-
-    const taskData = {
-        selectedShellies,
-        userSsid,
-        userPassword
-    };
-
-    try {
-        // HIER DIE KORREKTUR: Führender Schrägstrich entfernt
-        await fetch('api/configure', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(taskData)
-        });
-
-        progressInterval = setInterval(updateProgress, 2000);
-
-    } catch (error) {
-        document.getElementById('logOutput').textContent = 'FEHLER beim Starten der Konfiguration: ' + error.message;
-        document.querySelector('#wifiForm button[type="submit"]').disabled = false;
-    }
-});
+function restartUserMode() {
+    if(progressInterval) clearInterval(progressInterval);
+    document.getElementById('userWifiCredentials').style.display = 'block';
+    document.getElementById('userDeviceSelection').style.display = 'none';
+    document.getElementById('userProgressArea').style.display = 'none';
+    document.getElementById('userSsid').value = '';
+    document.getElementById('userPassword').value = '';
+}
 
 
-// ====== NEUE FUNKTIONEN FÜR DIE GERÄTEVERWALTUNG ======
-/**
- * Schreibt eine Nachricht in das Admin-Debug-Fenster und scrollt automatisch nach unten.
- * @param {string} message Die Nachricht, die geloggt werden soll.
- */
+// ====== ADMIN-MODUS FUNKTIONEN ======
+
 function adminLog(message) {
     const logOutput = document.getElementById('adminDebugLog');
     if (!logOutput) return;
-
     const timestamp = new Date().toLocaleTimeString();
     logOutput.textContent += `[${timestamp}] ${message}\n`;
-    
-    // === DIESE ZEILE IST ENTSCHEIDEND ===
-    // Setzt die Scroll-Position auf die maximale Höhe des Inhalts,
-    // was einem Sprung ganz nach unten entspricht.
     logOutput.scrollTop = logOutput.scrollHeight;
 }
-/**
- * Lädt die verschlüsselte Geräteliste vom Server.
- */
+
 async function loadAndDisplayDevices() {
     const pinInput = document.getElementById('adminUserPinInput');
     const errorP = document.getElementById('adminPinError');
@@ -266,20 +213,16 @@ async function loadAndDisplayDevices() {
             body: JSON.stringify({ pin: userPin })
         });
 
-        if (response.status === 400) {
-            throw new Error('Entschlüsselung fehlgeschlagen. Falsche PIN?');
-        }
-        if (!response.ok) {
-            throw new Error(`Serverfehler: ${response.status}`);
-        }
+        if (response.status === 400) throw new Error('Entschlüsselung fehlgeschlagen. Falsche PIN?');
+        if (!response.ok) throw new Error(`Serverfehler: ${response.status}`);
 
         adminDeviceList = await response.json();
         
-        // Wechsle zur Verwaltungsansicht
         document.getElementById('adminPinPrompt').style.display = 'none';
         document.getElementById('adminDeviceManager').style.display = 'block';
         
         renderDeviceTable();
+        adminLog(`Erfolgreich ${adminDeviceList.length} Gerät(e) aus der Liste geladen.`);
 
     } catch (error) {
         errorP.textContent = `Fehler: ${error.message}`;
@@ -287,109 +230,77 @@ async function loadAndDisplayDevices() {
     }
 }
 
-/**
- * Zeichnet die Tabelle mit den Geräten aus der globalen `adminDeviceList`.
- */
 function renderDeviceTable() {
     const tableBody = document.querySelector('#deviceListTable tbody');
-    tableBody.innerHTML = ''; // Leere die Tabelle
+    tableBody.innerHTML = '';
 
     if (adminDeviceList.length === 0) {
-        tableBody.innerHTML = '<tr><td colspan="4">Keine Geräte in der Liste. Starte einen Scan, um neue Geräte zu finden.</td></tr>';
+        tableBody.innerHTML = '<tr><td colspan="5">Keine Geräte in der Liste. Starte einen Scan, um neue Geräte zu finden.</td></tr>';
         return;
     }
     
     adminDeviceList.forEach(device => {
         const tr = document.createElement('tr');
-        tr.id = `row-${device.mac}`; // Eindeutige ID für die Zeile
+        tr.id = `row-${device.mac}`;
 
-        // Zelle 1: Modell / SSID
-        const tdModel = document.createElement('td');
-        tdModel.innerHTML = `<strong>${device.model || 'Unbekannt'}</strong><br><small>${device.ssid}</small>`;
-        
-        // Zelle 2: Bemerkung / Raum
-        const tdBemerkung = document.createElement('td');
-        tdBemerkung.textContent = device.bemerkung;
-        
-        // Zelle 3: Name für Home Assistant
-        const tdHaName = document.createElement('td');
-        tdHaName.textContent = device.haName || ''; // Verwende haName oder leer
-
-        // Zelle 4: Aktionen
-        const tdActions = document.createElement('td');
-        tdActions.innerHTML = `
-            <button class="table-button" onclick="editDeviceRow('${device.mac}')">Bearbeiten</button>
-            <button class="table-button delete-btn" onclick="deleteDeviceRow('${device.mac}')">Löschen</button>
+        tr.innerHTML = `
+            <td><strong>${device.model || 'Unbekannt'}</strong><br><small>${device.ssid}</small></td>
+            <td>${device.generation || 'N/A'}</td>
+            <td>${device.bemerkung || ''}</td>
+            <td>${device.haName || ''}</td>
+            <td>
+                <button class="table-button" onclick="editDeviceRow('${device.mac}')">Bearbeiten</button>
+                <button class="table-button delete-btn" onclick="deleteDeviceRow('${device.mac}')">Löschen</button>
+            </td>
         `;
-
-        tr.appendChild(tdModel);
-        tr.appendChild(tdBemerkung);
-        tr.appendChild(tdHaName);
-        tr.appendChild(tdActions);
         tableBody.appendChild(tr);
     });
 }
 
-/**
- * Wandelt eine Zeile in den Bearbeitungsmodus um.
- * @param {string} mac Die MAC-Adresse des Geräts.
- */
 function editDeviceRow(mac) {
     const device = adminDeviceList.find(d => d.mac === mac);
     if (!device) return;
 
     const row = document.getElementById(`row-${mac}`);
     
-    // Generiere einen sinnvollen Namen, falls noch keiner existiert
     if (!device.haName) {
         device.haName = generateHaName(device);
     }
-
-    row.cells[1].innerHTML = `<input type="text" class="editable-input" value="${device.bemerkung}" placeholder="z.B. Wohnzimmer Decke">`;
-    row.cells[2].innerHTML = `<input type="text" class="editable-input" value="${device.haName}">`;
-    row.cells[3].innerHTML = `
+    
+    // Die Spalten sind jetzt: Modell, Gen, Bemerkung, HA-Name, Aktionen
+    row.cells[2].innerHTML = `<input type="text" class="editable-input" value="${device.bemerkung || ''}" placeholder="z.B. Wohnzimmer Decke">`;
+    row.cells[3].innerHTML = `<input type="text" class="editable-input" value="${device.haName || ''}">`;
+    row.cells[4].innerHTML = `
         <button class="table-button save-row-btn" onclick="saveDeviceRow('${mac}')">OK</button>
         <button class="table-button" onclick="renderDeviceTable()">Abbrechen</button>
     `;
 }
 
-/**
- * Speichert die Änderungen aus dem Bearbeitungsmodus in das globale Array.
- * @param {string} mac Die MAC-Adresse des Geräts.
- */
 function saveDeviceRow(mac) {
     const device = adminDeviceList.find(d => d.mac === mac);
     if (!device) return;
 
     const row = document.getElementById(`row-${mac}`);
     
-    const bemerkungInput = row.cells[1].querySelector('input');
-    const haNameInput = row.cells[2].querySelector('input');
+    const bemerkungInput = row.cells[2].querySelector('input');
+    const haNameInput = row.cells[3].querySelector('input');
 
-    // Aktualisiere das Objekt im Array
     device.bemerkung = bemerkungInput.value;
     device.haName = haNameInput.value;
 
-    // Neu zeichnen, um den Bearbeitungsmodus zu beenden
     renderDeviceTable();
 }
 
-/**
- * Löscht ein Gerät aus der Liste (nach Bestätigung).
- * @param {string} mac Die MAC-Adresse des Geräts.
- */
 function deleteDeviceRow(mac) {
     if (confirm(`Soll das Gerät mit der MAC ${mac} wirklich aus der Liste gelöscht werden?`)) {
         adminDeviceList = adminDeviceList.filter(d => d.mac !== mac);
         renderDeviceTable();
+        adminLog(`Gerät mit MAC ${mac} aus der Liste entfernt. Nicht vergessen zu speichern!`);
     }
 }
 
-/**
- * Scannt nach neuen, noch nicht in der Liste vorhandenen Geräten.
- */
 async function scanForNewDevices() {
-    const scanButton = document.querySelector('.scan-button');
+    const scanButton = document.querySelector('#adminDeviceManager .scan-button');
     const originalText = scanButton.textContent;
     scanButton.textContent = 'Scanne...';
     scanButton.disabled = true;
@@ -404,14 +315,11 @@ async function scanForNewDevices() {
 
         const responseData = await response.json();
 
-        // Logge alle Einträge vom Backend
         if (responseData.logs && responseData.logs.length > 0) {
             responseData.logs.forEach(logMsg => adminLog(logMsg));
         }
 
-        if (!response.ok) {
-            throw new Error(responseData.details || 'Scan auf dem Server fehlgeschlagen');
-        }
+        if (!response.ok) throw new Error(responseData.details || 'Scan auf dem Server fehlgeschlagen');
 
         const newDevices = responseData.new_devices || [];
         if (newDevices.length > 0) {
@@ -431,9 +339,6 @@ async function scanForNewDevices() {
     }
 }
 
-/**
- * Speichert die komplette Geräteliste verschlüsselt auf dem Server.
- */
 async function saveChangesToServer() {
     if (!userPin) {
         adminLog("FEHLER: Speichern nicht möglich. Keine gültige PIN vorhanden. Bitte lade die Liste neu.");
@@ -448,9 +353,7 @@ async function saveChangesToServer() {
             body: JSON.stringify({ pin: userPin, devices: adminDeviceList })
         });
 
-        if (!response.ok) {
-            throw new Error(`Speichern fehlgeschlagen: ${response.statusText}`);
-        }
+        if (!response.ok) throw new Error(`Speichern fehlgeschlagen: ${response.statusText}`);
         
         adminLog(`ERFOLG: ${adminDeviceList.length} Gerät(e) erfolgreich verschlüsselt und gespeichert.`);
 
@@ -460,13 +363,9 @@ async function saveChangesToServer() {
     }
 }
 
-/**
- * Generiert einen Vorschlag für einen Home Assistant Namen.
- * @param {object} device Das Geräteobjekt.
- */
 function generateHaName(device) {
     const bemerkung = device.bemerkung || 'Unbenannt';
-    const model = (device.model || 'Shelly').replace(/\s/g, ''); // Leerzeichen entfernen
-    const macPart = device.mac.slice(-6); // Letzte 6 Zeichen der MAC
+    const model = (device.model || 'Shelly').replace(/\s/g, '');
+    const macPart = device.mac.slice(-6);
     return `${bemerkung}-${model}-${macPart}`;
 }

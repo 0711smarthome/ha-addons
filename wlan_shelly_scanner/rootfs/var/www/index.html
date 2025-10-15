@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Shelly WLAN Setup</title>
-    <link rel="stylesheet" href="style.css?v=0.2.0">
+    <link rel="stylesheet" href="style.css?v=0.2.1">
 </head>
 <body>
     <div class="container">
@@ -20,31 +20,39 @@
             </div>
 
             <div id="step2" style="display: none;">
-                <h1>WLAN Konfiguration</h1>
+                <h1>WLAN Konfiguration (Benutzer)</h1>
                 
-                <form id="wifiForm">
-                    <h2>1. Shelly-Geräte auswählen</h2>
-                    <p>Wähle die Shelly-Netzwerke aus, die konfiguriert werden sollen.</p>
-                    <button type="button" onclick="triggerScan()" class="scan-button">Neuen Scan starten</button>
-                    <div id="wifiList"><p>Bitte starte einen neuen Scan, um nach Shelly-Netzwerken zu suchen.</p></div>
-                    
-                    <hr>
-
-                    <h2>2. Deine WLAN-Zugangsdaten</h2>
-                    <p>Gib die Zugangsdaten für dein Heim-WLAN ein, mit dem sich die Shelly's verbinden sollen.</p>
+                <div id="userWifiCredentials">
+                    <h2>1. Deine WLAN-Zugangsdaten</h2>
+                    <p>Gib die Zugangsdaten für dein Heim-WLAN ein.</p>
                     <label for="userSsid">WLAN-Name (SSID):</label>
                     <input type="text" id="userSsid" name="userSsid" required>
-                    
                     <label for="userPassword">WLAN-Passwort:</label>
-                    <input type="password" id="userPassword" name="userPassword" required minlength="8" title="Das Passwort muss mindestens 8 Zeichen lang sein.">
+                    <input type="password" id="userPassword" name="userPassword" required>
+                    <button type="button" class="scan-button" onclick="loadAndScanForUser()">Geräte suchen</button>
+                </div>
+                
+                <div id="userDeviceSelection" style="display: none;">
+                    <h2>2. Geräte auswählen</h2>
+                    <p>Die folgende Liste zeigt alle vorbereiteten Geräte. Wähle die aus, die aktuell online sind und konfiguriert werden sollen.</p>
+                    <div id="userShellyList">
+                        </div>
                     
-                    <button type="submit">Konfiguration starten</button>
-                </form>
+                    <div id="notFoundDevices" style="display: none; margin-top: 20px;">
+                        <h3>Geräte nicht gefunden</h3>
+                        <p>Die folgenden Geräte aus deiner Liste konnten nicht gefunden werden. Bitte stelle sicher, dass sie eingeschaltet und in deiner Nähe sind.</p>
+                        <ul id="notFoundList"></ul>
+                        <p>Bei Problemen, nutze die offizielle Shelly App oder unsere <a href="https_deine_webseite.de/anleitung.pdf" target="_blank">Anleitung</a>.</p>
+                    </div>
 
-                <div id="progressArea" style="display: none;">
+                    <button type="button" onclick="startUserConfiguration()">Ausgewählte Geräte konfigurieren</button>
+                </div>
+
+                <div id="userProgressArea" style="display: none;">
                     <hr>
                     <h2>Konfigurations-Fortschritt</h2>
-                    <pre id="logOutput">Starte Prozess...</pre>
+                    <pre id="userLogOutput"></pre>
+                    <button type="button" onclick="restartUserMode()">Vorgang neu starten</button>
                 </div>
             </div>
         </div>
@@ -99,6 +107,6 @@
         </div>
 
     </div>
-    <script src="script.js?v=0.2.0"></script>
+    <script src="script.js?v=0.2.1"></script>
 </body>
 </html>

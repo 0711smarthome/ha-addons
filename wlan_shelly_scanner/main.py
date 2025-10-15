@@ -6,16 +6,14 @@ import json
 import asyncio
 import subprocess
 import time
+import re
+import base64
+from itertools import cycle
 from urllib.parse import quote
 from typing import List, Optional, Dict, Any
 
 import aiohttp
 from aiohttp import web
-import fcntl
-import random
-import re # Für die SSID-Analyse
-import base64 # Für die sichere Übertragung der verschlüsselten Daten
-from itertools import cycle
 
 print("==== NEUSTART ====")
 print("======================")
@@ -24,16 +22,14 @@ print("======================")
 LOG_FILE = "/data/progress.log"
 TASK_FILE = "/data/task.json"
 CONFIG_PATH = "/data/options.json"
-WIFI_LIST_FILE = "/var/www/wifi_list.json"
-SCAN_TRIGGER_FILE = "/tmp/scan_now"
-CONFIGURE_TRIGGER_FILE = "/tmp/configure_now"
+ADMIN_DEVICES_FILE = "/data/shelly_devices.json.enc"
 
 CONFIGURE_LOCK = asyncio.Lock()
 
 # --- Token-Management (wird nur einmal beim Start gelesen) ---
 SUPERVISOR_TOKEN = os.environ.get("SUPERVISOR_TOKEN")
 HEADERS = {"Authorization": f"Bearer {SUPERVISOR_TOKEN}"}
-ADMIN_DEVICES_FILE = "/data/shelly_devices.json.enc"
+
 # --- Hilfsfunktionen ---
 
 def log(message: str) -> None:
@@ -46,32 +42,25 @@ def log(message: str) -> None:
     except Exception as e:
         print(f"Error writing to log file: {e}", flush=True)
 
-
 def xor_crypt(data: bytes, key: str) -> bytes:
     """Einfache XOR-Verschlüsselung."""
     if not key:
-        return data # Wenn kein Key, keine Verschlüsselung
+        return data  # Wenn kein Key, keine Verschlüsselung
     key_bytes = key.encode('utf-8')
     return bytes([b ^ k for b, k in zip(data, cycle(key_bytes))])
-
-# main.py
 
 def parse_shelly_ssid(ssid: str) -> (Optional[str], Optional[str], Optional[str]):
     """
     Analysiert eine SSID und extrahiert Modell, Generation und MAC-Adresse.
     """
-    # NEUES, FLEXIBLERES Gen 2/3/4 Muster: Shelly[Modell]-MAC(12-stellig)
-    # Erkennt "Shelly" gefolgt von einem Modellnamen und einer 12-stelligen MAC.
+    # Flexibles Gen 2/3/4 Muster: Shelly[Modell]-MAC(12-stellig)
     gen234_match = re.match(r'^(Shelly([a-zA-Z0-9\-\_]+))-([0-9A-F]{12})$', ssid, re.IGNORECASE)
     if gen234_match:
-        # Gruppe 1 ist der komplette Modellname (z.B. "Shelly2PMG4")
-        # Gruppe 2 ist nur der Teil nach "Shelly" (z.B. "2PMG4")
-        # Gruppe 3 ist die MAC
         model_full = f"Shelly {gen234_match.group(2)}"
         mac = gen234_match.group(3)
         return "Gen 2/3/4", model_full, mac
 
-    # Gen 1 Muster (unverändert): shelly[modell]-MAC(6-stellig)
+    # Gen 1 Muster: shelly[modell]-MAC(6-stellig)
     gen1_match = re.match(r'^(shelly([a-zA-Z0-9\-\_]+))-([0-9A-F]{6})$', ssid, re.IGNORECASE)
     if gen1_match:
         model = f"Shelly {gen1_match.group(2)}"
@@ -79,9 +68,6 @@ def parse_shelly_ssid(ssid: str) -> (Optional[str], Optional[str], Optional[str]
         return "Gen 1", model, mac
 
     return None, None, None
-
-
-# --- Ende der neuen Funktionen ---        
 
 async def run_command(cmd: List[str]) -> (bool, str, str):
     """
@@ -110,22 +96,20 @@ async def wait_for_connection(interface: str, timeout: int = 45) -> bool:
     log(f"Warte auf aktive Verbindung und IP-Adresse für '{interface}'...")
     start_time = time.time()
     while time.time() - start_time < timeout:
-        # Prüfen, ob eine IP-Adresse zugewiesen wurde. Der Shelly vergibt 192.168.33.x
         success, stdout, _ = await run_command(["nmcli", "-g", "IP4.ADDRESS", "dev", "show", interface])
         if success and '192.168.33' in stdout:
             log(f"Erfolgreich verbunden! IP-Adresse: {stdout.split('/')[0]}")
             return True
-        await asyncio.sleep(2) # Alle 2 Sekunden prüfen
+        await asyncio.sleep(2)
 
     log(f"FEHLER: Timeout nach {timeout}s. Keine gültige IP-Adresse für '{interface}' erhalten.")
     return False
-
 
 # --- Kernlogik ---
 
 async def run_configuration_logic(caller_id: str) -> None:
     """
-    Hauptlogik zur Konfiguration der Shellies. Wird exklusiv durch einen Lock ausgeführt.
+    Hauptlogik zur Konfiguration der Shellies. Unterscheidet jetzt zwischen Gen1 und Gen2/3/4.
     """
     log(f"[{caller_id}] Versuch, die Konfigurations-Sperre zu bekommen...")
     async with CONFIGURE_LOCK:
@@ -141,19 +125,25 @@ async def run_configuration_logic(caller_id: str) -> None:
             with open(TASK_FILE, 'r') as f: task = json.load(f)
             with open(CONFIG_PATH, 'r') as f: config = json.load(f)
 
-            selected_shellies = task.get("selectedShellies", [])
+            selected_devices = task.get("selectedDevices", [])
             user_ssid = task.get("userSsid", "")
             user_password = task.get("userPassword", "")
             interface = config.get("interface", "wlan0")
 
-            if not user_ssid or not selected_shellies:
-                log(f"[{caller_id}] FEHLER: Ungültige Aufgabendaten (SSID oder Shellies fehlen).")
+            if not user_ssid or not selected_devices:
+                log(f"[{caller_id}] FEHLER: Ungültige Aufgabendaten (SSID oder Geräte fehlen).")
                 return
 
             await run_command(["nmcli", "radio", "wifi", "on"])
 
-            for shelly_ssid in selected_shellies:
-                log(f"[{caller_id}] --- Bearbeite: {shelly_ssid} ---")
+            for device in selected_devices:
+                shelly_ssid = device.get("ssid")
+                generation = device.get("generation", "Gen 1")  # Fallback auf Gen 1 falls nicht vorhanden
+                
+                if not shelly_ssid:
+                    continue
+
+                log(f"[{caller_id}] --- Bearbeite: {shelly_ssid} (erkannt als {generation}) ---")
                 
                 await run_command(["nmcli", "connection", "delete", shelly_ssid])
                 
@@ -163,66 +153,35 @@ async def run_configuration_logic(caller_id: str) -> None:
                     "name", shelly_ssid, "ifname", interface
                 ])
 
-                if not connect_success:
-                    log(f"[{caller_id}] FEHLER: Der Verbindungsaufbau zu {shelly_ssid} schlug fehl.")
-                    failed_shellies.append(shelly_ssid)
-                    continue
-                
-                if not await wait_for_connection(interface):
-                    log(f"[{caller_id}] FEHLER: Konnte keine stabile Verbindung zu {shelly_ssid} herstellen.")
+                if not connect_success or not await wait_for_connection(interface):
+                    log(f"[{caller_id}] FEHLER: Verbindung zu {shelly_ssid} fehlgeschlagen.")
                     failed_shellies.append(shelly_ssid)
                     await run_command(["nmcli", "connection", "delete", shelly_ssid])
                     continue
 
-                # Ab hier ist die Verbindung aktiv und hat eine IP
                 shelly_ip = "192.168.33.1"
+                configure_url = ""
 
-                # ####################################################################
-                # ### START DER ÄNDERUNG: Gen2-Befehl korrekt zusammenbauen ###
-                # ####################################################################
+                # --- Gen1/Gen2+ Logik ---
+                if "Gen 1" in generation:
+                    log(f"[{caller_id}] Baue Gen1-Konfigurations-URL...")
+                    encoded_ssid = quote(user_ssid)
+                    encoded_pass = quote(user_password)
+                    configure_url = f"http://{shelly_ip}/settings/sta?ssid={encoded_ssid}&pass={encoded_pass}&enable=1"
+                else:  # Alles andere wird als Gen2+ behandelt
+                    log(f"[{caller_id}] Baue Gen2+-Konfigurations-URL...")
+                    rpc_payload = {"config": {"sta": {"ssid": user_ssid, "pass": user_password, "enable": True}}}
+                    encoded_config = quote(json.dumps(rpc_payload["config"])) # Nur der "config" Teil wird enkodiert
+                    configure_url = f"http://{shelly_ip}/rpc/WiFi.SetConfig?config={encoded_config}"
 
-                # 1. Erstelle das Konfigurations-Objekt als Python Dictionary
-                config_payload = {
-                    "config": {
-                        "sta": {
-                            "ssid": user_ssid,
-                            "pass": user_password,
-                            "enable": True
-                        }
-                    }
-                }
-
-                # 2. Wandle das Dictionary in einen JSON-String um
-                config_json_string = json.dumps(config_payload)
-                
-                # 3. URL-kodiere den JSON-String, um ihn sicher in der URL zu verwenden
-                # HINWEIS: Laut Doku wird der gesamte JSON-Block als Wert für den "config"-Parameter erwartet.
-                # Wir bauen hier aber den RPC-Aufruf nach, wie er in der URL steht.
-                
-                rpc_payload = {
-                    "sta":{
-                        "ssid": user_ssid,
-                        "pass": user_password,
-                        "enable": True
-                    }
-                }
-                encoded_config = quote(json.dumps(rpc_payload))
-                
-                # 4. Baue die finale URL zusammen
-                configure_url = f"http://{shelly_ip}/rpc/WiFi.SetConfig?config={encoded_config}"
-                
-                log(f"[{caller_id}] Sende Gen2-Konfigurationsbefehl an {shelly_ip}...")
-
-                # ####################################################################
-                # ### ENDE DER ÄNDERUNG                                            ###
-                # ####################################################################
+                log(f"[{caller_id}] Sende Konfigurationsbefehl an {shelly_ip}...")
                 
                 try:
                     async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=20)) as session:
                         async with session.get(configure_url) as response:
                             response_text = await response.text()
                             if response.status == 200:
-                                log(f"[{caller_id}] Befehl für {shelly_ssid} erfolgreich gesendet. Antwort: {response_text}")
+                                log(f"[{caller_id}] Befehl für {shelly_ssid} erfolgreich. Antwort: {response_text}")
                                 successful_shellies.append(shelly_ssid)
                             else:
                                 log(f"[{caller_id}] FEHLER bei {shelly_ssid}: Shelly-Antwort: {response.status}, Text: {response_text}")
@@ -234,7 +193,6 @@ async def run_configuration_logic(caller_id: str) -> None:
                     log(f"[{caller_id}] Trenne Verbindung zu {shelly_ssid}...")
                     await run_command(["nmcli", "connection", "down", shelly_ssid])
                     await run_command(["nmcli", "connection", "delete", shelly_ssid])
-                    log(f"[{caller_id}] Verbindung getrennt.")
         
         except Exception as e:
             log(f"[{caller_id}] Ein unerwarteter, schwerer Fehler ist aufgetreten: {e}")
@@ -244,7 +202,7 @@ async def run_configuration_logic(caller_id: str) -> None:
             if failed_shellies: log(f"Fehlgeschlagen: {len(failed_shellies)} Geräte ({', '.join(failed_shellies)})")
             if os.path.exists(TASK_FILE): os.remove(TASK_FILE)
             log(f"[{caller_id}] Sperre wird freigegeben.")
-            
+
 
 async def scan_wifi_networks(interface: str, existing_macs: List[str] = None) -> (bool, List[Dict[str, Any]], List[str], str):
     """
@@ -270,12 +228,13 @@ async def scan_wifi_networks(interface: str, existing_macs: List[str] = None) ->
             log_entries.append(msg)
             return False, [], log_entries, stderr
 
-        lines = stdout.strip().split('\n')
-        ssids = [line.strip() for line in lines if line.strip() and line.strip() != 'SSID']
-        log_entries.append(f"Scan abgeschlossen. {len(ssids)} Netzwerke gefunden.")
+        lines = stdout.strip().split('\n')[1:] # Header überspringen
+        log_entries.append(f"Scan abgeschlossen. {len(lines)} Netzwerke gefunden.")
 
-        for ssid in ssids:
-            # Logge JEDES gefundene Netzwerk
+        for line in lines:
+            ssid = line.strip()
+            if not ssid or ssid == '--': continue
+
             log_entries.append(f"- Gefundenes WLAN: '{ssid}'")
             generation, model, mac = parse_shelly_ssid(ssid)
             
@@ -287,7 +246,8 @@ async def scan_wifi_networks(interface: str, existing_macs: List[str] = None) ->
                         "ssid": ssid,
                         "generation": generation,
                         "model": model,
-                        "bemerkung": ""
+                        "bemerkung": "",
+                        "haName": ""
                     })
                 else:
                     log_entries.append("  -> Shelly bereits in der Liste, wird ignoriert.")
@@ -302,40 +262,55 @@ async def scan_wifi_networks(interface: str, existing_macs: List[str] = None) ->
         return False, [], log_entries, str(e)
 
 
-
 async def background_worker_loop() -> None:
     """
     Endlosschleife, die auf Trigger-Dateien für die Konfiguration wartet.
     """
     log("Hintergrund-Dienst gestartet. Warte auf Konfigurations-Trigger...")
-    with open(CONFIG_PATH) as f:
-        config = json.load(f)
-    interface = config.get("interface", "wlan0")
-
     while True:
         if os.path.exists(CONFIGURE_TRIGGER_FILE):
             os.remove(CONFIGURE_TRIGGER_FILE)
             task_id = f"task_{random.randint(1000, 9999)}"
             asyncio.create_task(run_configuration_logic(caller_id=task_id))
-
         await asyncio.sleep(1)
 
 
+# --- API-Server ---
+
 async def handle_scan(request: web.Request) -> web.Response:
-    """Führt einen einfachen Scan für den User-Modus aus und gibt eine Liste von SSIDs zurück."""
+    """
+    Führt einen Scan für den User-Modus aus und gibt eine Liste von Objekten 
+    mit SSID und Signalstärke zurück.
+    """
     with open(CONFIG_PATH) as f:
         config = json.load(f)
     interface = config.get("interface", "wlan0")
 
-    # Wir rufen die erweiterte Funktion ohne 'existing_macs' auf
-    success, devices, error_message = await scan_wifi_networks(interface)
+    log("User-Mode Scan wird ausgelöst...")
+    networks = []
+    try:
+        success, stdout, stderr = await run_command([
+            "nmcli", "-f", "SSID,SIGNAL", "dev", "wifi", "list", "--rescan", "yes"
+        ])
 
-    if success:
-        # Extrahiere nur die SSIDs für den einfachen User-Modus
-        ssids = [dev['ssid'] for dev in devices]
-        return web.json_response(ssids)
-    else:
-        return web.json_response({"error": "Scan fehlgeschlagen", "details": error_message}, status=500)
+        if success:
+            lines = stdout.strip().split('\n')[1:]
+            for line in lines:
+                try:
+                    parts = line.strip().split()
+                    if len(parts) >= 2:
+                        signal = parts[-1]
+                        ssid = " ".join(parts[:-1]).strip()
+                        if ssid and ssid != '--':
+                           networks.append({"ssid": ssid, "signal": int(signal)})
+                except (ValueError, IndexError):
+                    log(f"Konnte Zeile nicht parsen: '{line}'")
+            return web.json_response(networks)
+        else:
+            return web.json_response({"error": "Scan fehlgeschlagen", "details": stderr}, status=500)
+    except Exception as e:
+        log(f"Fehler bei handle_scan: {e}")
+        return web.json_response({"error": str(e)}, status=500)
 
 async def handle_configure(request: web.Request) -> web.Response:
     try:
@@ -349,11 +324,12 @@ async def handle_configure(request: web.Request) -> web.Response:
 
 async def handle_progress(request: web.Request) -> web.Response:
     try:
-        with open(LOG_FILE, "r") as f: content = f.read()
+        with open(LOG_FILE, "r", encoding="utf-8") as f: content = f.read()
         return web.Response(text=content, content_type="text/plain", charset="utf-8")
     except FileNotFoundError:
         return web.Response(text="Log-Datei noch nicht vorhanden.", status=200)
 
+# --- Admin API-Endpunkte ---
 
 async def handle_admin_load_devices(request: web.Request) -> web.Response:
     """Lädt, entschlüsselt und gibt die gespeicherte Geräteliste zurück."""
@@ -363,7 +339,7 @@ async def handle_admin_load_devices(request: web.Request) -> web.Response:
         if not pin: return web.Response(status=400, text="PIN fehlt")
 
         if not os.path.exists(ADMIN_DEVICES_FILE):
-            return web.json_response([]) # Leere Liste, wenn Datei nicht existiert
+            return web.json_response([])
 
         with open(ADMIN_DEVICES_FILE, "rb") as f:
             encrypted_data = f.read()
@@ -401,7 +377,6 @@ async def handle_admin_save_devices(request: web.Request) -> web.Response:
         log(f"Fehler beim Speichern der Geräte: {e}")
         return web.Response(status=500)
 
-
 async def handle_admin_scan(request: web.Request) -> web.Response:
     """Scannt nach NEUEN Geräten und gibt eine detaillierte Antwort mit Logs zurück."""
     try:
@@ -428,7 +403,7 @@ async def handle_admin_scan(request: web.Request) -> web.Response:
         log(f"API Fehler /api/admin/scan: {e}")
         return web.json_response({"error": str(e)}, status=500)
 
-
+# --- Haupt-Startfunktion ---
 
 async def start_background_tasks(app: web.Application) -> None:
     app['background_worker'] = asyncio.create_task(background_worker_loop())
@@ -436,18 +411,18 @@ async def start_background_tasks(app: web.Application) -> None:
 async def main_startup() -> None:
     log(".........................................Add-on wird gestartet.........................................")
 
-    if not os.path.exists(WIFI_LIST_FILE):
-        log("wifi_list.json nicht gefunden, erstelle eine leere Datei.")
-        with open(WIFI_LIST_FILE, "w") as f: json.dump([], f)
-
     app = web.Application()
     app.on_startup.append(start_background_tasks)
+    
+    # User-Mode Routen
     app.router.add_get("/api/scan", handle_scan)
     app.router.add_post("/api/configure", handle_configure)
     app.router.add_get("/api/progress", handle_progress)
+    
+    # Admin-Mode Routen
     app.router.add_post("/api/admin/devices/load", handle_admin_load_devices)
     app.router.add_post("/api/admin/devices/save", handle_admin_save_devices)
-    app.router.add_post("/api/admin/scan", handle_admin_scan)    
+    app.router.add_post("/api/admin/scan", handle_admin_scan)
 
     runner = web.AppRunner(app)
     await runner.setup()

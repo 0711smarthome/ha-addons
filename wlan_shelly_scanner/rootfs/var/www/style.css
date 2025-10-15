@@ -126,6 +126,9 @@ hr {
     margin-top: 15px; /* Etwas Abstand nach oben */
 }
 /* Stile für das Einstellungs-Icon */
+/* style.css */
+
+/* Ersetze die bestehende #settingsIcon Regel */
 #settingsIcon {
     position: absolute;
     top: 15px;
@@ -133,11 +136,14 @@ hr {
     font-size: 24px;
     cursor: pointer;
     opacity: 0.6;
-    transition: opacity 0.3s;
+    transition: opacity 0.3s, transform 0.3s;
+    font-weight: bold; /* Macht Emojis manchmal flacher */
+    transform: rotate(0deg);
 }
 
 #settingsIcon:hover {
     opacity: 1;
+    transform: rotate(90deg); /* Kleine Animation beim Hovern */
 }
 
 /* Stil für sekundäre Buttons (z.B. "Zurück"-Buttons) */
