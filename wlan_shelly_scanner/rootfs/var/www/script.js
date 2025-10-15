@@ -1,5 +1,5 @@
 const HARDCODED_PIN = "0711";
-const HARDCODED_ADMIN_PASSWORD = "0711Admin!"; // Neues Admin-Passwort
+const HARDCODED_ADMIN_PASSWORD = "admin"; // Neues Admin-Passwort
 
 // Globale Variable für das Polling-Interval, damit wir es stoppen können
 let progressInterval = null;
