@@ -1,5 +1,5 @@
 ARG BUILD_FROM
-FROM alpine:3.19
+FROM alpine:3.20
 
 LABEL Ihr Name <IhreEmail@example.com>
 
