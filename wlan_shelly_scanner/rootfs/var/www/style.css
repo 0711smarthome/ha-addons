@@ -147,3 +147,72 @@ hr {
 .secondary-button:hover {
     background-color: #616161;
 }
+/* style.css */
+
+/* --- Stile für Admin-Panel --- */
+
+.admin-actions {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+}
+
+.admin-actions button {
+    width: auto; /* Buttons nicht über die volle Breite strecken */
+}
+
+.table-container {
+    overflow-x: auto; /* Scrollbar bei schmalen Bildschirmen */
+}
+
+#deviceListTable {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 15px;
+}
+
+#deviceListTable th, #deviceListTable td {
+    border: 1px solid #ddd;
+    padding: 12px;
+    text-align: left;
+    vertical-align: middle;
+}
+
+#deviceListTable th {
+    background-color: #f8f8f8;
+    font-weight: bold;
+}
+
+#deviceListTable tr:nth-child(even) {
+    background-color: #fdfdfd;
+}
+
+.editable-input {
+    width: 100%;
+    padding: 8px;
+    border: 1px solid #03a9f4;
+    border-radius: 4px;
+    box-sizing: border-box;
+}
+
+/* Kleinere Buttons für Aktionen in der Tabelle */
+.table-button {
+    padding: 6px 12px;
+    font-size: 14px;
+    margin-right: 5px;
+    width: auto;
+}
+
+.delete-btn {
+    background-color: #f44336; /* Rot */
+}
+.delete-btn:hover {
+    background-color: #d32f2f;
+}
+
+.save-row-btn {
+    background-color: #4CAF50; /* Grün */
+}
+.save-row-btn:hover {
+    background-color: #45a049;
+}

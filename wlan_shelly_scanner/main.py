@@ -13,6 +13,9 @@ import aiohttp
 from aiohttp import web
 import fcntl
 import random
+import re # Für die SSID-Analyse
+import base64 # Für die sichere Übertragung der verschlüsselten Daten
+from itertools import cycle
 
 print("==== NEUSTART ====")
 print("======================")
@@ -30,7 +33,7 @@ CONFIGURE_LOCK = asyncio.Lock()
 # --- Token-Management (wird nur einmal beim Start gelesen) ---
 SUPERVISOR_TOKEN = os.environ.get("SUPERVISOR_TOKEN")
 HEADERS = {"Authorization": f"Bearer {SUPERVISOR_TOKEN}"}
-
+ADMIN_DEVICES_FILE = "/data/shelly_devices.json.enc"
 # --- Hilfsfunktionen ---
 
 def log(message: str) -> None:
@@ -42,6 +45,37 @@ def log(message: str) -> None:
             f.write(log_message + "\n")
     except Exception as e:
         print(f"Error writing to log file: {e}", flush=True)
+
+
+def xor_crypt(data: bytes, key: str) -> bytes:
+    """Einfache XOR-Verschlüsselung."""
+    if not key:
+        return data # Wenn kein Key, keine Verschlüsselung
+    key_bytes = key.encode('utf-8')
+    return bytes([b ^ k for b, k in zip(data, cycle(key_bytes))])
+
+def parse_shelly_ssid(ssid: str) -> (Optional[str], Optional[str], Optional[str]):
+    """
+    Analysiert eine SSID und extrahiert Modell, Generation und MAC-Adresse.
+    """
+    # Gen 2/3/4 Muster: Shelly[Plus/Pro]Modell-MAC
+    gen234_match = re.match(r'^(Shelly(?:Plus|Pro|PM)([a-zA-Z0-9]+))-([0-9A-F]{12})$', ssid, re.IGNORECASE)
+    if gen234_match:
+        model_full = f"Shelly {gen234_match.group(1).replace('Shelly', '')}"
+        mac = gen234_match.group(3)
+        return f"Gen 2/3", model_full, mac
+
+    # Gen 1 Muster: shelly[modell]-[MAC]
+    gen1_match = re.match(r'^(shelly([a-zA-Z0-9\-\_]+))-([0-9A-F]{6})$', ssid, re.IGNORECASE)
+    if gen1_match:
+        model = f"Shelly {gen1_match.group(2)}"
+        mac = gen1_match.group(3)
+        return "Gen 1", model, mac
+
+    return None, None, None
+
+
+# --- Ende der neuen Funktionen ---        
 
 async def run_command(cmd: List[str]) -> (bool, str, str):
     """
@@ -206,35 +240,48 @@ async def run_configuration_logic(caller_id: str) -> None:
             log(f"[{caller_id}] Sperre wird freigegeben.")
             
 
-async def scan_wifi_networks(interface: str) -> (bool, List[str], str):
+async def scan_wifi_networks(interface: str, existing_macs: List[str] = None) -> (bool, List[Dict[str, Any]], str):
     """
-    Scannt nach WLAN-Netzwerken und gibt (Erfolg, [SSID-Liste], "Fehlermeldung") zurück.
+    Scannt nach WLAN-Netzwerken, parst Shelly-SSIDs und ignoriert bereits bekannte MACs.
+    Gibt eine Liste von Dictionaries mit Gerätedetails zurück.
     """
-    log("Scan wird ausgelöst...")
+    if existing_macs is None:
+        existing_macs = []
+
+    log(f"Scan für neue Shelly-Geräte wird ausgelöst (ignoriere {len(existing_macs)} bekannte MACs)...")
+    found_devices = []
+    
     try:
-        # --rescan yes erzwingt einen frischen Scan
         success, stdout, stderr = await run_command([
             "nmcli", "-f", "SSID", "dev", "wifi", "list", "--rescan", "yes"
         ])
 
-        if success:
-            log("Scan erfolgreich.")
-            lines = stdout.strip().split('\n')
-            # Filtere leere Zeilen und den Header 'SSID' heraus
-            ssids = [line.strip() for line in lines if line.strip() and line.strip() != 'SSID']
-            
-            # Die Datei wird weiterhin geschrieben, falls sie für eine spätere Funktion nützlich ist
-            with open(WIFI_LIST_FILE, 'w') as f:
-                json.dump(ssids, f)
-            
-            return True, ssids, ""
-        else:
+        if not success:
             log(f"FEHLER: 'nmcli scan' fehlgeschlagen. Fehler: {stderr}")
             return False, [], stderr
+
+        lines = stdout.strip().split('\n')
+        ssids = [line.strip() for line in lines if line.strip() and line.strip() != 'SSID']
+
+        for ssid in ssids:
+            generation, model, mac = parse_shelly_ssid(ssid)
+            if mac and mac not in existing_macs:
+                log(f"Neues Gerät gefunden: SSID={ssid}, MAC={mac}")
+                found_devices.append({
+                    "mac": mac,
+                    "ssid": ssid,
+                    "generation": generation,
+                    "model": model,
+                    "bemerkung": "" # Leeres Bemerkungsfeld für neue Geräte
+                })
+        
+        log(f"Scan abgeschlossen. {len(found_devices)} neue Geräte gefunden.")
+        return True, found_devices, ""
             
     except Exception as e:
         log(f"Fehler während des Scans: {e}")
         return False, [], str(e)
+
 
 
 async def background_worker_loop() -> None:
@@ -257,15 +304,20 @@ async def background_worker_loop() -> None:
 
 # --- API-Server ---
 
+# main.py
+
 async def handle_scan(request: web.Request) -> web.Response:
-    """Führt einen Scan aus und gibt das Ergebnis direkt als JSON zurück."""
+    """Führt einen einfachen Scan für den User-Modus aus und gibt eine Liste von SSIDs zurück."""
     with open(CONFIG_PATH) as f:
         config = json.load(f)
     interface = config.get("interface", "wlan0")
 
-    success, ssids, error_message = await scan_wifi_networks(interface)
+    # Wir rufen die erweiterte Funktion ohne 'existing_macs' auf
+    success, devices, error_message = await scan_wifi_networks(interface)
 
     if success:
+        # Extrahiere nur die SSIDs für den einfachen User-Modus
+        ssids = [dev['ssid'] for dev in devices]
         return web.json_response(ssids)
     else:
         return web.json_response({"error": "Scan fehlgeschlagen", "details": error_message}, status=500)
@@ -288,6 +340,76 @@ async def handle_progress(request: web.Request) -> web.Response:
         return web.Response(text="Log-Datei noch nicht vorhanden.", status=200)
 
 # --- Haupt-Startfunktion ---
+# --- NEUE API-Endpunkte für Admin ---
+
+async def handle_admin_load_devices(request: web.Request) -> web.Response:
+    """Lädt, entschlüsselt und gibt die gespeicherte Geräteliste zurück."""
+    try:
+        data = await request.json()
+        pin = data.get("pin")
+        if not pin: return web.Response(status=400, text="PIN fehlt")
+
+        if not os.path.exists(ADMIN_DEVICES_FILE):
+            return web.json_response([]) # Leere Liste, wenn Datei nicht existiert
+
+        with open(ADMIN_DEVICES_FILE, "rb") as f:
+            encrypted_data = f.read()
+        
+        decrypted_bytes = xor_crypt(encrypted_data, pin)
+        devices = json.loads(decrypted_bytes.decode('utf-8'))
+        return web.json_response(devices)
+
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        log("FEHLER: Konnte Gerätedatei nicht entschlüsseln. Falsche PIN oder korrupte Datei.")
+        return web.Response(status=400, text="Entschlüsselung fehlgeschlagen. Falsche PIN?")
+    except Exception as e:
+        log(f"Fehler beim Laden der Geräte: {e}")
+        return web.Response(status=500)
+
+async def handle_admin_save_devices(request: web.Request) -> web.Response:
+    """Empfängt eine Geräteliste, verschlüsselt und speichert sie."""
+    try:
+        data = await request.json()
+        pin = data.get("pin")
+        devices = data.get("devices")
+        if not pin or devices is None:
+            return web.Response(status=400, text="PIN oder Gerätedaten fehlen")
+
+        json_string = json.dumps(devices, indent=4)
+        encrypted_data = xor_crypt(json_string.encode('utf-8'), pin)
+
+        with open(ADMIN_DEVICES_FILE, "wb") as f:
+            f.write(encrypted_data)
+        
+        log(f"{len(devices)} Geräte erfolgreich verschlüsselt und gespeichert.")
+        return web.Response(status=200)
+
+    except Exception as e:
+        log(f"Fehler beim Speichern der Geräte: {e}")
+        return web.Response(status=500)
+
+async def handle_admin_scan(request: web.Request) -> web.Response:
+    """Scannt nach NEUEN Geräten, die noch nicht in der übermittelten Liste sind."""
+    try:
+        data = await request.json()
+        existing_devices = data.get("devices", [])
+        existing_macs = [dev.get("mac") for dev in existing_devices if dev.get("mac")]
+
+        with open(CONFIG_PATH) as f: config = json.load(f)
+        interface = config.get("interface", "wlan0")
+
+        success, new_devices, error_message = await scan_wifi_networks(interface, existing_macs)
+
+        if success:
+            return web.json_response(new_devices)
+        else:
+            return web.json_response({"error": "Scan fehlgeschlagen", "details": error_message}, status=500)
+
+    except Exception as e:
+        log(f"API Fehler /api/admin/scan: {e}")
+        return web.Response(status=500, text=str(e))
+
+
 
 async def start_background_tasks(app: web.Application) -> None:
     app['background_worker'] = asyncio.create_task(background_worker_loop())
@@ -304,6 +426,9 @@ async def main_startup() -> None:
     app.router.add_get("/api/scan", handle_scan)
     app.router.add_post("/api/configure", handle_configure)
     app.router.add_get("/api/progress", handle_progress)
+    app.router.add_post("/api/admin/devices/load", handle_admin_load_devices)
+    app.router.add_post("/api/admin/devices/save", handle_admin_save_devices)
+    app.router.add_post("/api/admin/scan", handle_admin_scan)    
 
     runner = web.AppRunner(app)
     await runner.setup()

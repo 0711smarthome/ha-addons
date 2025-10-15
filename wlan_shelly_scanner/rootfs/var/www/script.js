@@ -3,6 +3,8 @@ const HARDCODED_ADMIN_PASSWORD = "0711Admin!"; // Neues Admin-Passwort
 
 // Globale Variable für das Polling-Interval, damit wir es stoppen können
 let progressInterval = null;
+let adminDeviceList = [];
+let userPin = "";
 
 /**
  * Blendet den Benutzermodus aus und zeigt den Admin-Login an.
@@ -16,14 +18,21 @@ function showAdminLogin() {
 }
 
 /**
- * Überprüft das eingegebene Admin-Passwort.
+ * Überprüft das eingegebene Admin-Passwort und zeigt die PIN-Abfrage für die Geräteliste.
  */
 function checkAdminPassword() {
     const adminPassword = document.getElementById('adminPasswordInput').value;
     const adminError = document.getElementById('adminError');
     if (adminPassword === HARDCODED_ADMIN_PASSWORD) {
         document.getElementById('adminLogin').style.display = 'none';
+        
+        // Zeige jetzt die PIN-Abfrage für die Geräteliste an
         document.getElementById('adminPanel').style.display = 'block';
+        document.getElementById('adminPinPrompt').style.display = 'block';
+        document.getElementById('adminDeviceManager').style.display = 'none'; // Verwalter noch ausblenden
+        document.getElementById('adminPinError').textContent = '';
+        document.getElementById('adminUserPinInput').value = '';
+
     } else {
         adminError.textContent = 'Falsches Passwort!';
         document.getElementById('adminPasswordInput').value = '';
@@ -217,3 +226,224 @@ document.getElementById('wifiForm').addEventListener('submit', async function(ev
         document.querySelector('#wifiForm button[type="submit"]').disabled = false;
     }
 });
+
+// script.js
+
+// ====== NEUE FUNKTIONEN FÜR DIE GERÄTEVERWALTUNG ======
+
+/**
+ * Lädt die verschlüsselte Geräteliste vom Server.
+ */
+async function loadAndDisplayDevices() {
+    const pinInput = document.getElementById('adminUserPinInput');
+    const errorP = document.getElementById('adminPinError');
+    userPin = pinInput.value;
+    errorP.textContent = 'Lade und entschlüssle...';
+
+    if (!userPin) {
+        errorP.textContent = 'Bitte gib eine PIN ein.';
+        return;
+    }
+
+    try {
+        const response = await fetch('/api/admin/devices/load', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ pin: userPin })
+        });
+
+        if (response.status === 400) {
+            throw new Error('Entschlüsselung fehlgeschlagen. Falsche PIN?');
+        }
+        if (!response.ok) {
+            throw new Error(`Serverfehler: ${response.status}`);
+        }
+
+        adminDeviceList = await response.json();
+        
+        // Wechsle zur Verwaltungsansicht
+        document.getElementById('adminPinPrompt').style.display = 'none';
+        document.getElementById('adminDeviceManager').style.display = 'block';
+        
+        renderDeviceTable();
+
+    } catch (error) {
+        errorP.textContent = `Fehler: ${error.message}`;
+        console.error('Fehler beim Laden der Geräte:', error);
+    }
+}
+
+/**
+ * Zeichnet die Tabelle mit den Geräten aus der globalen `adminDeviceList`.
+ */
+function renderDeviceTable() {
+    const tableBody = document.querySelector('#deviceListTable tbody');
+    tableBody.innerHTML = ''; // Leere die Tabelle
+
+    if (adminDeviceList.length === 0) {
+        tableBody.innerHTML = '<tr><td colspan="4">Keine Geräte in der Liste. Starte einen Scan, um neue Geräte zu finden.</td></tr>';
+        return;
+    }
+    
+    adminDeviceList.forEach(device => {
+        const tr = document.createElement('tr');
+        tr.id = `row-${device.mac}`; // Eindeutige ID für die Zeile
+
+        // Zelle 1: Modell / SSID
+        const tdModel = document.createElement('td');
+        tdModel.innerHTML = `<strong>${device.model || 'Unbekannt'}</strong><br><small>${device.ssid}</small>`;
+        
+        // Zelle 2: Bemerkung / Raum
+        const tdBemerkung = document.createElement('td');
+        tdBemerkung.textContent = device.bemerkung;
+        
+        // Zelle 3: Name für Home Assistant
+        const tdHaName = document.createElement('td');
+        tdHaName.textContent = device.haName || ''; // Verwende haName oder leer
+
+        // Zelle 4: Aktionen
+        const tdActions = document.createElement('td');
+        tdActions.innerHTML = `
+            <button class="table-button" onclick="editDeviceRow('${device.mac}')">Bearbeiten</button>
+            <button class="table-button delete-btn" onclick="deleteDeviceRow('${device.mac}')">Löschen</button>
+        `;
+
+        tr.appendChild(tdModel);
+        tr.appendChild(tdBemerkung);
+        tr.appendChild(tdHaName);
+        tr.appendChild(tdActions);
+        tableBody.appendChild(tr);
+    });
+}
+
+/**
+ * Wandelt eine Zeile in den Bearbeitungsmodus um.
+ * @param {string} mac Die MAC-Adresse des Geräts.
+ */
+function editDeviceRow(mac) {
+    const device = adminDeviceList.find(d => d.mac === mac);
+    if (!device) return;
+
+    const row = document.getElementById(`row-${mac}`);
+    
+    // Generiere einen sinnvollen Namen, falls noch keiner existiert
+    if (!device.haName) {
+        device.haName = generateHaName(device);
+    }
+
+    row.cells[1].innerHTML = `<input type="text" class="editable-input" value="${device.bemerkung}" placeholder="z.B. Wohnzimmer Decke">`;
+    row.cells[2].innerHTML = `<input type="text" class="editable-input" value="${device.haName}">`;
+    row.cells[3].innerHTML = `
+        <button class="table-button save-row-btn" onclick="saveDeviceRow('${mac}')">OK</button>
+        <button class="table-button" onclick="renderDeviceTable()">Abbrechen</button>
+    `;
+}
+
+/**
+ * Speichert die Änderungen aus dem Bearbeitungsmodus in das globale Array.
+ * @param {string} mac Die MAC-Adresse des Geräts.
+ */
+function saveDeviceRow(mac) {
+    const device = adminDeviceList.find(d => d.mac === mac);
+    if (!device) return;
+
+    const row = document.getElementById(`row-${mac}`);
+    
+    const bemerkungInput = row.cells[1].querySelector('input');
+    const haNameInput = row.cells[2].querySelector('input');
+
+    // Aktualisiere das Objekt im Array
+    device.bemerkung = bemerkungInput.value;
+    device.haName = haNameInput.value;
+
+    // Neu zeichnen, um den Bearbeitungsmodus zu beenden
+    renderDeviceTable();
+}
+
+/**
+ * Löscht ein Gerät aus der Liste (nach Bestätigung).
+ * @param {string} mac Die MAC-Adresse des Geräts.
+ */
+function deleteDeviceRow(mac) {
+    if (confirm(`Soll das Gerät mit der MAC ${mac} wirklich aus der Liste gelöscht werden?`)) {
+        adminDeviceList = adminDeviceList.filter(d => d.mac !== mac);
+        renderDeviceTable();
+    }
+}
+
+/**
+ * Scannt nach neuen, noch nicht in der Liste vorhandenen Geräten.
+ */
+async function scanForNewDevices() {
+    const scanButton = document.querySelector('.scan-button');
+    const originalText = scanButton.textContent;
+    scanButton.textContent = 'Scanne...';
+    scanButton.disabled = true;
+
+    try {
+        const response = await fetch('/api/admin/scan', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ devices: adminDeviceList })
+        });
+
+        if (!response.ok) {
+            throw new Error(`Scan fehlgeschlagen: ${response.statusText}`);
+        }
+
+        const newDevices = await response.json();
+        if (newDevices.length > 0) {
+            newDevices.forEach(dev => adminDeviceList.push(dev));
+            alert(`${newDevices.length} neue(s) Shelly-Gerät(e) gefunden und zur Liste hinzugefügt.`);
+            renderDeviceTable();
+        } else {
+            alert('Keine neuen Shelly-Geräte im AP-Modus gefunden.');
+        }
+
+    } catch (error) {
+        alert(`Fehler beim Scannen: ${error.message}`);
+        console.error('Scan-Fehler:', error);
+    } finally {
+        scanButton.textContent = originalText;
+        scanButton.disabled = false;
+    }
+}
+
+/**
+ * Speichert die komplette Geräteliste verschlüsselt auf dem Server.
+ */
+async function saveChangesToServer() {
+    if (!userPin) {
+        alert("Fehler: Keine gültige PIN vorhanden. Bitte lade die Liste neu.");
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/admin/devices/save', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ pin: userPin, devices: adminDeviceList })
+        });
+
+        if (!response.ok) {
+            throw new Error(`Speichern fehlgeschlagen: ${response.statusText}`);
+        }
+
+        alert(`Erfolgreich ${adminDeviceList.length} Gerät(e) gespeichert.`);
+
+    } catch (error) {
+        alert(`Fehler beim Speichern: ${error.message}`);
+        console.error('Speicher-Fehler:', error);
+    }
+}
+
+/**
+ * Generiert einen Vorschlag für einen Home Assistant Namen.
+ * @param {object} device Das Geräteobjekt.
+ */
+function generateHaName(device) {
+    const bemerkung = device.bemerkung || 'Unbenannt';
+    const model = (device.model || 'Shelly').replace(/\s/g, ''); // Leerzeichen entfernen
+    const macPart = device.mac.slice(-6); // Letzte 6 Zeichen der MAC
+    return `${bemerkung}-${model}-${macPart}`;
+}

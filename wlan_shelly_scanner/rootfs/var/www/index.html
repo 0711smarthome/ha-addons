@@ -59,10 +59,41 @@
         </div>
 
         <div id="adminPanel" style="display: none;">
-            <h1>Admin-Einstellungen</h1>
-            <p>Dieser Bereich ist für zukünftige Einstellungen reserviert.</p>
-            <br>
-            <button class="secondary-button" onclick="showUserMode()">Zurück zum Benutzermodus</button>
+            <div id="adminPinPrompt">
+                <h1>Geräteliste laden</h1>
+                <p>Um die gespeicherte Geräteliste zu laden und zu entschlüsseln, gib bitte die PIN des Benutzermodus ein.</p>
+                <input type="password" id="adminUserPinInput" maxlength="4" inputmode="numeric" pattern="[0-9]*">
+                <button onclick="loadAndDisplayDevices()">Laden & Entschlüsseln</button>
+                <p id="adminPinError" class="error-message"></p>
+                <button class="secondary-button" onclick="showUserMode()">Zurück zum Benutzermodus</button>
+            </div>
+
+            <div id="adminDeviceManager" style="display: none;">
+                <h1>Geräte-Verwaltung</h1>
+                <p>Hier kannst du erkannte Shelly-Geräte verwalten, bevor du sie im Benutzermodus konfigurierst.</p>
+                
+                <div class="admin-actions">
+                    <button class="scan-button" onclick="scanForNewDevices()">Nach neuen Geräten suchen</button>
+                    <button onclick="saveChangesToServer()">Änderungen speichern</button>
+                </div>
+
+                <div class="table-container">
+                    <table id="deviceListTable">
+                        <thead>
+                            <tr>
+                                <th>Modell / SSID</th>
+                                <th>Bemerkung / Raum</th>
+                                <th>Name für Home Assistant</th>
+                                <th>Aktionen</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            </tbody>
+                    </table>
+                </div>
+
+                <button class="secondary-button" onclick="showUserMode()">Zurück zum Benutzermodus</button>
+            </div>
         </div>
 
     </div>
