@@ -246,7 +246,7 @@ async function loadAndDisplayDevices() {
     }
 
     try {
-        const response = await fetch('/api/admin/devices/load', {
+        const response = await fetch('api/admin/devices/load', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ pin: userPin })
@@ -381,7 +381,7 @@ async function scanForNewDevices() {
     scanButton.disabled = true;
 
     try {
-        const response = await fetch('/api/admin/scan', {
+        const response = await fetch('api/admin/scan', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ devices: adminDeviceList })
@@ -419,7 +419,7 @@ async function saveChangesToServer() {
     }
     
     try {
-        const response = await fetch('/api/admin/devices/save', {
+        const response = await fetch('api/admin/devices/save', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ pin: userPin, devices: adminDeviceList })
