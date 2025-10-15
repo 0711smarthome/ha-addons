@@ -54,18 +54,24 @@ def xor_crypt(data: bytes, key: str) -> bytes:
     key_bytes = key.encode('utf-8')
     return bytes([b ^ k for b, k in zip(data, cycle(key_bytes))])
 
+# main.py
+
 def parse_shelly_ssid(ssid: str) -> (Optional[str], Optional[str], Optional[str]):
     """
     Analysiert eine SSID und extrahiert Modell, Generation und MAC-Adresse.
     """
-    # Gen 2/3/4 Muster: Shelly[Plus/Pro]Modell-MAC
-    gen234_match = re.match(r'^(Shelly(?:Plus|Pro|PM)([a-zA-Z0-9]+))-([0-9A-F]{12})$', ssid, re.IGNORECASE)
+    # NEUES, FLEXIBLERES Gen 2/3/4 Muster: Shelly[Modell]-MAC(12-stellig)
+    # Erkennt "Shelly" gefolgt von einem Modellnamen und einer 12-stelligen MAC.
+    gen234_match = re.match(r'^(Shelly([a-zA-Z0-9\-\_]+))-([0-9A-F]{12})$', ssid, re.IGNORECASE)
     if gen234_match:
-        model_full = f"Shelly {gen234_match.group(1).replace('Shelly', '')}"
+        # Gruppe 1 ist der komplette Modellname (z.B. "Shelly2PMG4")
+        # Gruppe 2 ist nur der Teil nach "Shelly" (z.B. "2PMG4")
+        # Gruppe 3 ist die MAC
+        model_full = f"Shelly {gen234_match.group(2)}"
         mac = gen234_match.group(3)
-        return f"Gen 2/3", model_full, mac
+        return "Gen 2/3/4", model_full, mac
 
-    # Gen 1 Muster: shelly[modell]-[MAC]
+    # Gen 1 Muster (unverändert): shelly[modell]-MAC(6-stellig)
     gen1_match = re.match(r'^(shelly([a-zA-Z0-9\-\_]+))-([0-9A-F]{6})$', ssid, re.IGNORECASE)
     if gen1_match:
         model = f"Shelly {gen1_match.group(2)}"
@@ -315,10 +321,6 @@ async def background_worker_loop() -> None:
         await asyncio.sleep(1)
 
 
-# --- API-Server ---
-
-# main.py
-
 async def handle_scan(request: web.Request) -> web.Response:
     """Führt einen einfachen Scan für den User-Modus aus und gibt eine Liste von SSIDs zurück."""
     with open(CONFIG_PATH) as f:
@@ -352,8 +354,6 @@ async def handle_progress(request: web.Request) -> web.Response:
     except FileNotFoundError:
         return web.Response(text="Log-Datei noch nicht vorhanden.", status=200)
 
-# --- Haupt-Startfunktion ---
-# --- NEUE API-Endpunkte für Admin ---
 
 async def handle_admin_load_devices(request: web.Request) -> web.Response:
     """Lädt, entschlüsselt und gibt die gespeicherte Geräteliste zurück."""

@@ -230,7 +230,7 @@ document.getElementById('wifiForm').addEventListener('submit', async function(ev
 
 // ====== NEUE FUNKTIONEN FÜR DIE GERÄTEVERWALTUNG ======
 /**
- * Schreibt eine Nachricht in das Admin-Debug-Fenster.
+ * Schreibt eine Nachricht in das Admin-Debug-Fenster und scrollt automatisch nach unten.
  * @param {string} message Die Nachricht, die geloggt werden soll.
  */
 function adminLog(message) {
@@ -240,7 +240,9 @@ function adminLog(message) {
     const timestamp = new Date().toLocaleTimeString();
     logOutput.textContent += `[${timestamp}] ${message}\n`;
     
-    // Automatisch nach unten scrollen
+    // === DIESE ZEILE IST ENTSCHEIDEND ===
+    // Setzt die Scroll-Position auf die maximale Höhe des Inhalts,
+    // was einem Sprung ganz nach unten entspricht.
     logOutput.scrollTop = logOutput.scrollHeight;
 }
 /**
