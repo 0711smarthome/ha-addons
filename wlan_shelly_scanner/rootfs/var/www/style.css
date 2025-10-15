@@ -123,3 +123,27 @@ hr {
     white-space: pre-wrap; /* Zeilenumbrüche erhalten */
     border: 1px solid #444;
 }
+/* Stile für das Einstellungs-Icon */
+#settingsIcon {
+    position: absolute;
+    top: 15px;
+    right: 20px;
+    font-size: 24px;
+    cursor: pointer;
+    opacity: 0.6;
+    transition: opacity 0.3s;
+}
+
+#settingsIcon:hover {
+    opacity: 1;
+}
+
+/* Stil für sekundäre Buttons (z.B. "Zurück"-Buttons) */
+.secondary-button {
+    background-color: #757575; /* Grau */
+    margin-top: 15px;
+}
+
+.secondary-button:hover {
+    background-color: #616161;
+}

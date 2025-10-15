@@ -1,7 +1,49 @@
 const HARDCODED_PIN = "0711";
+const HARDCODED_ADMIN_PASSWORD = "0711Admin!"; // Neues Admin-Passwort
 
 // Globale Variable für das Polling-Interval, damit wir es stoppen können
 let progressInterval = null;
+
+/**
+ * Blendet den Benutzermodus aus und zeigt den Admin-Login an.
+ */
+function showAdminLogin() {
+    document.getElementById('userModeContainer').style.display = 'none';
+    document.getElementById('adminPanel').style.display = 'none'; // Admin-Panel auch ausblenden
+    document.getElementById('adminLogin').style.display = 'block';
+    document.getElementById('adminError').textContent = '';
+    document.getElementById('adminPasswordInput').value = '';
+}
+
+/**
+ * Überprüft das eingegebene Admin-Passwort.
+ */
+function checkAdminPassword() {
+    const adminPassword = document.getElementById('adminPasswordInput').value;
+    const adminError = document.getElementById('adminError');
+    if (adminPassword === HARDCODED_ADMIN_PASSWORD) {
+        document.getElementById('adminLogin').style.display = 'none';
+        document.getElementById('adminPanel').style.display = 'block';
+    } else {
+        adminError.textContent = 'Falsches Passwort!';
+        document.getElementById('adminPasswordInput').value = '';
+    }
+}
+
+/**
+ * Setzt die Ansicht auf den ursprünglichen Benutzermodus zurück.
+ */
+function showUserMode() {
+    document.getElementById('adminLogin').style.display = 'none';
+    document.getElementById('adminPanel').style.display = 'none';
+    document.getElementById('userModeContainer').style.display = 'block';
+    
+    // Setze den User-Modus auf den initialen Zustand zurück (PIN-Abfrage)
+    document.getElementById('step1').style.display = 'block';
+    document.getElementById('step2').style.display = 'none';
+    document.getElementById('pinInput').value = ''; // PIN-Feld leeren
+    document.getElementById('pinError').textContent = '';
+}
 
 /**
  * Überprüft die eingegebene PIN und zeigt bei Erfolg den Hauptbereich an.

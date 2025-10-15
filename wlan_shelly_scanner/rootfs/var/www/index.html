@@ -4,47 +4,68 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Shelly WLAN Setup</title>
-    <link rel="stylesheet" href="style.css?v=1.5.1">
+    <link rel="stylesheet" href="style.css?v=1.6.0">
 </head>
 <body>
     <div class="container">
-        <div id="step1">
-            <h1>PIN Eingabe</h1>
-            <p>Bitte gib die PIN ein, um fortzufahren.</p>
-            <input type="password" id="pinInput" maxlength="4" inputmode="numeric" pattern="[0-9]*">
-            <button onclick="checkPin()">Bestätigen</button>
-            <p id="pinError" class="error-message"></p>
-        </div>
+        <div id="settingsIcon" onclick="showAdminLogin()">⚙️</div>
 
-        <div id="step2" style="display: none;">
-            <h1>WLAN Konfiguration</h1>
-            
-            <form id="wifiForm">
-                <h2>1. Shelly-Geräte auswählen</h2>
-                <p>Wähle die Shelly-Netzwerke aus, die konfiguriert werden sollen.</p>
-                <button type="button" onclick="triggerScan()" class="scan-button">Neuen Scan starten</button>
-                <div id="wifiList"></div>
-                
-                <hr>
+        <div id="userModeContainer">
+            <div id="step1">
+                <h1>PIN Eingabe</h1>
+                <p>Bitte gib die PIN ein, um fortzufahren.</p>
+                <input type="password" id="pinInput" maxlength="4" inputmode="numeric" pattern="[0-9]*">
+                <button onclick="checkPin()">Bestätigen</button>
+                <p id="pinError" class="error-message"></p>
+            </div>
 
-                <h2>2. Deine WLAN-Zugangsdaten</h2>
-                <p>Gib die Zugangsdaten für dein Heim-WLAN ein, mit dem sich die Shelly's verbinden sollen.</p>
-                <label for="userSsid">WLAN-Name (SSID):</label>
-                <input type="text" id="userSsid" name="userSsid" required>
+            <div id="step2" style="display: none;">
+                <h1>WLAN Konfiguration</h1>
                 
-                <label for="userPassword">WLAN-Passwort:</label>
-                <input type="password" id="userPassword" name="userPassword" required minlength="8" title="Das Passwort muss mindestens 8 Zeichen lang sein.">
-                
-                <button type="submit">Konfiguration starten</button>
-            </form>
+                <form id="wifiForm">
+                    <h2>1. Shelly-Geräte auswählen</h2>
+                    <p>Wähle die Shelly-Netzwerke aus, die konfiguriert werden sollen.</p>
+                    <button type="button" onclick="triggerScan()" class="scan-button">Neuen Scan starten</button>
+                    <div id="wifiList"><p>Bitte starte einen neuen Scan, um nach Shelly-Netzwerken zu suchen.</p></div>
+                    
+                    <hr>
 
-            <div id="progressArea" style="display: none;">
-                <hr>
-                <h2>Konfigurations-Fortschritt</h2>
-                <pre id="logOutput">Starte Prozess...</pre>
+                    <h2>2. Deine WLAN-Zugangsdaten</h2>
+                    <p>Gib die Zugangsdaten für dein Heim-WLAN ein, mit dem sich die Shelly's verbinden sollen.</p>
+                    <label for="userSsid">WLAN-Name (SSID):</label>
+                    <input type="text" id="userSsid" name="userSsid" required>
+                    
+                    <label for="userPassword">WLAN-Passwort:</label>
+                    <input type="password" id="userPassword" name="userPassword" required minlength="8" title="Das Passwort muss mindestens 8 Zeichen lang sein.">
+                    
+                    <button type="submit">Konfiguration starten</button>
+                </form>
+
+                <div id="progressArea" style="display: none;">
+                    <hr>
+                    <h2>Konfigurations-Fortschritt</h2>
+                    <pre id="logOutput">Starte Prozess...</pre>
+                </div>
             </div>
         </div>
+
+        <div id="adminLogin" style="display: none;">
+            <h1>Admin-Login</h1>
+            <p>Bitte gib das Admin-Passwort ein.</p>
+            <input type="password" id="adminPasswordInput">
+            <button onclick="checkAdminPassword()">Einloggen</button>
+            <p id="adminError" class="error-message"></p>
+            <button class="secondary-button" onclick="showUserMode()">Zurück zum Benutzermodus</button>
+        </div>
+
+        <div id="adminPanel" style="display: none;">
+            <h1>Admin-Einstellungen</h1>
+            <p>Dieser Bereich ist für zukünftige Einstellungen reserviert.</p>
+            <br>
+            <button class="secondary-button" onclick="showUserMode()">Zurück zum Benutzermodus</button>
+        </div>
+
     </div>
-    <script src="script.js?v=1.5.5"></script>
+    <script src="script.js?v=1.6.0"></script>
 </body>
 </html>
