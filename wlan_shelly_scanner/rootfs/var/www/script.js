@@ -1,4 +1,4 @@
-// script.js - v2.4.0
+// script.js - v0.6.0
 
 // === CONFIGURATION ===
 const HARDCODED_ADMIN_PASSWORD = "admin";
@@ -110,31 +110,29 @@ async function scanForUserDevices() {
 }
 
 function renderUserDeviceList(availableAPs, onlineDevices) {
-    const listDiv = document.getElementById('userShellyList');
+    const tableBody = document.querySelector('#userShellyTable tbody');
     const notFoundList = document.getElementById('notFoundList');
-    listDiv.innerHTML = '';
+    tableBody.innerHTML = '';
     notFoundList.innerHTML = '';
     let anyFound = false, anyNotFound = false;
     const foundSsids = new Map(availableAPs.map(net => [net.ssid, net.signal]));
     const onlineHostnames = new Set(onlineDevices.map(dev => dev.hostname.toLowerCase()));
 
     userDeviceList.forEach(device => {
-        // Construct a descriptive name for logging, prioritizing haName, then model, then mac
         const logName = device.haName || device.model || device.mac;
-
         const isAlreadyOnline = onlineHostnames.has((`shelly${(device.model || '').replace(/Shelly /g, '')}-${device.mac}`).toLowerCase());
         const apIsVisible = foundSsids.has(device.ssid);
-        let statusBadge = '', disabled = '', checked = 'checked';
+        let statusCell = '', disabled = '', checked = 'checked';
 
         if (isAlreadyOnline) {
             userLog(`Gerät "${logName}" ist bereits im LAN online. Auswahl wird deaktiviert.`);
-            statusBadge = '<span class="badge bg-success float-end">Online im LAN</span>';
+            statusCell = '<span class="badge bg-success">Online im LAN</span>';
             disabled = 'disabled'; checked = '';
         } else if (apIsVisible) {
             userLog(`Gerät "${logName}" im AP-Modus gefunden.`);
             const signal = foundSsids.get(device.ssid);
             const signalClass = signal > 70 ? 'signal-good' : signal > 40 ? 'signal-medium' : 'signal-poor';
-            statusBadge = `<span class="badge float-end ${signalClass}">AP Signal: ${signal}%</span>`;
+            statusCell = `<span class="fw-bold ${signalClass}">AP Signal: ${signal}%</span>`;
             anyFound = true;
         } else {
             anyNotFound = true;
@@ -142,8 +140,16 @@ function renderUserDeviceList(availableAPs, onlineDevices) {
             return;
         }
         
-        const lastConfiguredText = device.lastConfigured ? `<small class="d-block text-muted">Zuletzt konfiguriert: ${device.lastConfigured}</small>` : '';
-        listDiv.innerHTML += `<div class="list-group-item"><input class="form-check-input me-2" type="checkbox" value="${device.mac}" id="user_shelly_${device.mac}" name="user_selected_shelly" ${checked} ${disabled}><label class="form-check-label stretched-link" for="user_shelly_${device.mac}"><strong>${device.haName || device.model}</strong> (${device.bemerkung || 'k.A.'})</label>${statusBadge}${lastConfiguredText}</div>`;
+        const lastConfiguredText = device.lastConfigured ? `<small class="d-block text-muted">${device.lastConfigured}</small>` : 'Nie';
+
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td class="align-middle"><input class="form-check-input" type="checkbox" value="${device.mac}" name="user_selected_shelly" ${checked} ${disabled}></td>
+            <td class="align-middle"><strong>${device.haName || device.model}</strong><br><small class="text-muted">${device.bemerkung || 'k.A.'}</small></td>
+            <td class="align-middle">${statusCell}</td>
+            <td class="align-middle small">${lastConfiguredText}</td>
+        `;
+        tableBody.appendChild(tr);
     });
     
     document.getElementById('userDeviceListContainer').classList.remove('d-none');
