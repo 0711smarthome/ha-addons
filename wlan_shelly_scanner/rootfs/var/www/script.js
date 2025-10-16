@@ -106,16 +106,28 @@ async function loadDeviceListForUser() {
 }
 
 async function scanForUserDevices() {
-    userLog('Suche nach Shelly-Geräten in Reichweite...');
+    userLog('Starte umfassenden Scan...');
     toggleSpinner('scanUserBtnSpinner', true);
     document.getElementById('scanUserBtn').disabled = true;
 
     try {
-        const response = await fetch('api/scan');
-        if (!response.ok) throw new Error('WLAN-Scan ist fehlgeschlagen.');
-        const availableNetworks = await response.json();
-        userLog(`Scan beendet. ${availableNetworks.length} Netzwerke gefunden.`);
-        renderUserDeviceList(availableNetworks);
+        // Starte beide Scans parallel
+        const [apResponse, lanResponse] = await Promise.all([
+            fetch('api/scan'),
+            fetch('api/lan_scan')
+        ]);
+
+        if (!apResponse.ok) throw new Error('WLAN-Scan (AP) ist fehlgeschlagen.');
+        if (!lanResponse.ok) throw new Error('Netzwerk-Scan (LAN) ist fehlgeschlagen.');
+
+        const availableAPs = await apResponse.json();
+        const onlineDevices = await lanResponse.json();
+        
+        userLog(`Scan (AP) beendet: ${availableAPs.length} Netzwerke gefunden.`);
+        userLog(`Scan (LAN) beendet: ${onlineDevices.length} Online-Shellys gefunden.`);
+        
+        renderUserDeviceList(availableAPs, onlineDevices);
+
     } catch (e) {
         userLog(`FEHLER beim Scan: ${e.message}`);
         showToast(e.message, 'danger');
@@ -125,8 +137,7 @@ async function scanForUserDevices() {
     }
 }
 
-function renderUserDeviceList(availableNetworks) {
-    const container = document.getElementById('userDeviceListContainer');
+function renderUserDeviceList(availableAPs, onlineDevices) {
     const listDiv = document.getElementById('userShellyList');
     const notFoundDiv = document.getElementById('notFoundDevices');
     const notFoundList = document.getElementById('notFoundList');
@@ -135,32 +146,51 @@ function renderUserDeviceList(availableNetworks) {
     let anyFound = false;
     let anyNotFound = false;
 
-    const foundSsids = new Map(availableNetworks.map(net => [net.ssid, net.signal]));
+    const foundSsids = new Map(availableAPs.map(net => [net.ssid, net.signal]));
+    const onlineHostnames = new Set(onlineDevices.map(dev => dev.hostname.toLowerCase()));
 
     userDeviceList.forEach(device => {
-        if (foundSsids.has(device.ssid)) {
-            anyFound = true;
+        const isAlreadyOnline = onlineHostnames.has(`shelly${device.model.replace(/Shelly /g, '').toLowerCase()}-${device.mac.toLowerCase()}`);
+        const apIsVisible = foundSsids.has(device.ssid);
+
+        let statusBadge = '';
+        let disabled = '';
+        let checked = 'checked';
+
+        if (isAlreadyOnline) {
+            statusBadge = '<span class="badge bg-success float-end">Online im LAN</span>';
+            disabled = 'disabled';
+            checked = ''; // Online-Geräte nicht standardmäßig auswählen
+            anyFound = true; // Zählt als "gefunden", damit Konfig-Button aktiv wird
+        } else if (apIsVisible) {
             const signal = foundSsids.get(device.ssid);
             const signalClass = signal > 70 ? 'signal-good' : signal > 40 ? 'signal-medium' : 'signal-poor';
-            listDiv.innerHTML += `
-                <div class="list-group-item">
-                    <input class="form-check-input me-1" type="checkbox" value="${device.mac}" id="user_shelly_${device.mac}" name="user_selected_shelly" checked>
-                    <label class="form-check-label stretched-link" for="user_shelly_${device.mac}">
-                        <strong>${device.haName || device.model}</strong> (${device.bemerkung || 'Keine Bemerkung'})
-                    </label>
-                    <span class="badge float-end ${signalClass}">${signal}%</span>
-                </div>
-            `;
+            statusBadge = `<span class="badge float-end ${signalClass}">AP Signal: ${signal}%</span>`;
+            anyFound = true;
         } else {
             anyNotFound = true;
             notFoundList.innerHTML += `<li>${device.haName || device.model}</li>`;
+            return; // Nächstes Gerät in der Schleife
         }
+        
+        const lastConfiguredText = device.lastConfigured ? `<small class="d-block text-muted">Zuletzt konfiguriert: ${device.lastConfigured}</small>` : '';
+
+        listDiv.innerHTML += `
+            <div class="list-group-item">
+                <input class="form-check-input me-2" type="checkbox" value="${device.mac}" id="user_shelly_${device.mac}" name="user_selected_shelly" ${checked} ${disabled}>
+                <label class="form-check-label" for="user_shelly_${device.mac}">
+                    <strong>${device.haName || device.model}</strong> (${device.bemerkung || 'Keine Bemerkung'})
+                </label>
+                ${statusBadge}
+                ${lastConfiguredText}
+            </div>
+        `;
     });
     
-    container.classList.remove('d-none');
+    document.getElementById('userDeviceListContainer').classList.remove('d-none');
     notFoundDiv.classList.toggle('d-none', !anyNotFound);
     document.getElementById('configureBtn').disabled = !anyFound;
-    userLog('Geräteliste aktualisiert. Wähle die Geräte aus, die konfiguriert werden sollen.');
+    userLog('Geräteliste aktualisiert. Bereits im LAN gefundene Geräte sind deaktiviert.');
 }
 
 async function startUserConfiguration() {

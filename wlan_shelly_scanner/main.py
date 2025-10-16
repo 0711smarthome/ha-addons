@@ -11,9 +11,10 @@ import base64
 from itertools import cycle
 from urllib.parse import quote
 from typing import List, Optional, Dict, Any
-
 import aiohttp
 from aiohttp import web
+from zeroconf import ServiceBrowser, Zeroconf
+import socket
 
 print("==== NEUSTART ====")
 print("======================")
@@ -277,6 +278,35 @@ async def background_worker_loop() -> None:
 
 
 # --- API-Server ---
+class ShellyListener:
+    def __init__(self):
+        self.found_devices = []
+
+    def remove_service(self, zeroconf, type, name):
+        pass  # Wir müssen nichts entfernen für einen kurzen Scan
+
+    def add_service(self, zeroconf, type, name):
+        info = zeroconf.get_service_info(type, name)
+        if info and name.lower().startswith("shelly"):
+            hostname = info.server.replace(".local.", "")
+            self.found_devices.append({
+                "hostname": hostname,
+                "ip_address": socket.inet_ntoa(info.addresses[0])
+            })
+
+async def handle_lan_scan(request: web.Request) -> web.Response:
+    """Sucht via mDNS nach Shelly-Geräten im lokalen Netzwerk."""
+    log("Starte LAN-Scan nach Online-Shellys...")
+    zeroconf = Zeroconf()
+    listener = ShellyListener()
+    browser = ServiceBrowser(zeroconf, "_http._tcp.local.", listener)
+
+    await asyncio.sleep(3)  # 3 Sekunden warten, um Antworten zu sammeln
+    zeroconf.close()
+
+    log(f"{len(listener.found_devices)} Shellies im LAN gefunden.")
+    return web.json_response(listener.found_devices)
+    
 
 async def handle_scan(request: web.Request) -> web.Response:
     """

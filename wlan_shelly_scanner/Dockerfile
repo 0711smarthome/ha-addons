@@ -11,6 +11,7 @@ RUN apk update && apk add --no-cache \
     networkmanager-cli \
     python3 \
     py3-aiohttp \
+    py3-zeroconf \    
     nginx \
     jq \
     bash \
