@@ -230,20 +230,19 @@ function renderDeviceTable() {
         const tr = document.createElement('tr');
         tr.id = `row-${device.mac}`;
         tr.innerHTML = `
-            <td><strong>${device.model || 'N/A'}</strong><br><small class="text-muted">${device.ssid}</small></td>
+            <td><strong>${device.model || 'N/A'}</strong><br><small class="text-body-secondary">${device.ssid}</small></td>
             <td>${device.generation || 'N/A'}</td>
             <td>${device.bemerkung || ''}</td>
             <td>${device.haName || ''}</td>
             <td class="small">${device.lastConfigured || 'Nie'}</td>
             <td>
-                <button class="btn btn-sm btn-outline-primary" onclick="editDeviceRow('${device.mac}')">Bearbeiten</button>
-                <button class="btn btn-sm btn-outline-danger ms-1" onclick="deleteDeviceRow('${device.mac}')">Löschen</button>
+                <button class="btn btn-link text-info p-0" onclick="editDeviceRow('${device.mac}')">Bearbeiten</button>
+                <button class="btn btn-link text-danger p-0 ms-2" onclick="deleteDeviceRow('${device.mac}')">Löschen</button>
             </td>
         `;
         tableBody.appendChild(tr);
     });
 }
-
 function editDeviceRow(mac) {
     const device = adminDeviceList.find(d => d.mac === mac);
     if (!device) return;
