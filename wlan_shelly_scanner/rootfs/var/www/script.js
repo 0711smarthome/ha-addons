@@ -1,4 +1,4 @@
-// script.js - v2.5.1
+// script.js - v2.6.0
 
 // === CONFIGURATION ===
 const HARDCODED_ADMIN_PASSWORD = "admin";
@@ -77,10 +77,7 @@ async function loadDeviceListForUser() {
         if (response.status === 400) throw new Error('Entschlüsselung fehlgeschlagen. Falsche PIN?');
         if (!response.ok) throw new Error('Geräteliste konnte nicht geladen werden.');
         userDeviceList = await response.json();
-        
-        // NEU: JSON-Liste im Debug-Fenster ausgeben
         userLog(`Geladene JSON-Liste:\n${JSON.stringify(userDeviceList, null, 2)}`);
-
         userLog(`Erfolgreich ${userDeviceList.length} Gerät(e) geladen.`);
         document.getElementById('userPinStep').classList.add('d-none');
         document.getElementById('userMainStep').classList.remove('d-none');
@@ -144,14 +141,12 @@ function renderUserDeviceList(availableAPs, onlineDevices) {
             return;
         }
         
-        const lastConfiguredText = device.lastConfigured ? `<small class="d-block text-muted">${device.lastConfigured}</small>` : 'Nie';
-
         const tr = document.createElement('tr');
         tr.innerHTML = `
             <td class="align-middle"><input class="form-check-input" type="checkbox" value="${device.mac}" name="user_selected_shelly" ${checked} ${disabled}></td>
-            <td class="align-middle"><strong>${device.haName || device.model}</strong><br><small class="text-muted">${device.bemerkung || 'k.A.'}</small></td>
+            <td class="align-middle"><strong>${device.haName || 'N/A'}</strong><br><small class="text-muted">${device.bemerkung || 'k.A.'}</small></td>
+            <td class="align-middle">${device.model || 'N/A'}<br><small class="text-muted">${device.generation || 'N/A'}</small></td>
             <td class="align-middle">${statusCell}</td>
-            <td class="align-middle small">${lastConfiguredText}</td>
         `;
         tableBody.appendChild(tr);
     });
@@ -203,10 +198,7 @@ async function loadAndDisplayDevicesForAdmin() {
         if (response.status === 400) throw new Error('Entschlüsselung fehlgeschlagen. Falsche PIN?');
         if (!response.ok) throw new Error('Serverfehler beim Laden.');
         adminDeviceList = await response.json();
-        
-        // NEU: JSON-Liste im Debug-Fenster ausgeben
         adminLog(`Geladene JSON-Liste:\n${JSON.stringify(adminDeviceList, null, 2)}`);
-
         renderDeviceTable();
         showToast(`Erfolgreich ${adminDeviceList.length} Gerät(e) geladen.`, 'success');
         adminLog(`Erfolgreich ${adminDeviceList.length} Gerät(e) geladen.`);
