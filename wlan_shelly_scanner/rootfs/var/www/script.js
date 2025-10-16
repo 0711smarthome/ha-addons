@@ -119,16 +119,19 @@ function renderUserDeviceList(availableAPs, onlineDevices) {
     const onlineHostnames = new Set(onlineDevices.map(dev => dev.hostname.toLowerCase()));
 
     userDeviceList.forEach(device => {
+        // Construct a descriptive name for logging, prioritizing haName, then model, then mac
+        const logName = device.haName || device.model || device.mac;
+
         const isAlreadyOnline = onlineHostnames.has((`shelly${(device.model || '').replace(/Shelly /g, '')}-${device.mac}`).toLowerCase());
         const apIsVisible = foundSsids.has(device.ssid);
         let statusBadge = '', disabled = '', checked = 'checked';
 
         if (isAlreadyOnline) {
-            userLog(`Gerät "${device.haName || device.mac}" ist bereits im LAN online. Auswahl wird deaktiviert.`);
+            userLog(`Gerät "${logName}" ist bereits im LAN online. Auswahl wird deaktiviert.`);
             statusBadge = '<span class="badge bg-success float-end">Online im LAN</span>';
             disabled = 'disabled'; checked = '';
         } else if (apIsVisible) {
-            userLog(`Gerät "${device.haName || device.mac}" im AP-Modus gefunden.`);
+            userLog(`Gerät "${logName}" im AP-Modus gefunden.`);
             const signal = foundSsids.get(device.ssid);
             const signalClass = signal > 70 ? 'signal-good' : signal > 40 ? 'signal-medium' : 'signal-poor';
             statusBadge = `<span class="badge float-end ${signalClass}">AP Signal: ${signal}%</span>`;
