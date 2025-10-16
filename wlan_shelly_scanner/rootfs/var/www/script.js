@@ -1,4 +1,4 @@
-// script.js - v2.6.0
+// script.js - v2.7.0
 
 // === CONFIGURATION ===
 const HARDCODED_ADMIN_PASSWORD = "admin";
@@ -123,17 +123,17 @@ function renderUserDeviceList(availableAPs, onlineDevices) {
         const logName = device.haName || device.model || device.mac;
         const isAlreadyOnline = onlineHostnames.has((`shelly${(device.model || '').replace(/Shelly /g, '')}-${device.mac}`).toLowerCase());
         const apIsVisible = foundSsids.has(device.ssid);
-        let statusCell = '', disabled = '', checked = 'checked';
+        let signalCell = '', disabled = '', checked = 'checked';
 
         if (isAlreadyOnline) {
             userLog(`Gerät "${logName}" ist bereits im LAN online. Auswahl wird deaktiviert.`);
-            statusCell = '<span class="badge bg-success">Online im LAN</span>';
+            signalCell = '<span class="badge bg-success">Online im LAN</span>';
             disabled = 'disabled'; checked = '';
         } else if (apIsVisible) {
             userLog(`Gerät "${logName}" im AP-Modus gefunden.`);
             const signal = foundSsids.get(device.ssid);
             const signalClass = signal > 70 ? 'signal-good' : signal > 40 ? 'signal-medium' : 'signal-poor';
-            statusCell = `<span class="fw-bold ${signalClass}">AP Signal: ${signal}%</span>`;
+            signalCell = `<span class="fw-bold ${signalClass}">${signal}%</span>`;
             anyFound = true;
         } else {
             anyNotFound = true;
@@ -141,12 +141,15 @@ function renderUserDeviceList(availableAPs, onlineDevices) {
             return;
         }
         
+        const lastConfiguredText = device.lastConfigured || 'Nie';
+
         const tr = document.createElement('tr');
         tr.innerHTML = `
             <td class="align-middle"><input class="form-check-input" type="checkbox" value="${device.mac}" name="user_selected_shelly" ${checked} ${disabled}></td>
             <td class="align-middle"><strong>${device.haName || 'N/A'}</strong><br><small class="text-muted">${device.bemerkung || 'k.A.'}</small></td>
             <td class="align-middle">${device.model || 'N/A'}<br><small class="text-muted">${device.generation || 'N/A'}</small></td>
-            <td class="align-middle">${statusCell}</td>
+            <td class="align-middle">${signalCell}</td>
+            <td class="align-middle small">${lastConfiguredText}</td>
         `;
         tableBody.appendChild(tr);
     });
