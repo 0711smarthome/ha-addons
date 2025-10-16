@@ -13,8 +13,7 @@
         .signal-medium { color: var(--bs-warning); }
         .signal-poor { color: var(--bs-danger); }
         #settingsIcon svg path { fill: var(--bs-gray-600); }
-        #settingsIcon:hover svg path { fill: var(--bs-primary); }
-        /* Fix für unsichtbaren Admin-Login bei Hover */
+        #settingsIcon:hover svg path { fill: var(--bs-light); } /* Hover color is now white */
         #adminLogin.d-none { display: none !important; }
     </style>
 </head>
@@ -27,23 +26,22 @@
         <div id="userModeContainer">
             <div class="card shadow-sm position-relative">
                 <div class="position-absolute top-0 end-0 p-2" id="settingsIcon" onclick="showAdminLogin()">
-                     <?xml version="1.0" encoding="UTF-8"?>
-                    <svg xmlns="http://www.w3.org/2000/svg" id="Layer_1" data-name="Layer 1" viewBox="0 0 24 24" class="w-8 h-8" width="32" height="32" style="cursor: pointer;">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="32" height="32" style="cursor: pointer;">
                       <path d="m8,12c-3.309,0-6-2.691-6-6S4.691,0,8,0s6,2.691,6,6-2.691,6-6,6Zm14.5,6c0-.46-.089-.895-.218-1.313l1.416-.816-.998-1.733-1.411.813c-.605-.652-1.393-1.125-2.289-1.33v-1.621h-2v1.621c-.896.205-1.685-.678-2.289,1.33l-1.411-.813-.998,1.733,1.416.816c-.129.418-.218.853-.218,1.313s.089.895.218,1.313l-1.416.816.998,1.733,1.411-.813c.605.652,1.393,1.125,2.289,1.33v1.621h2v-1.621c.896-.205,1.685-.678,2.289,1.33l1.411.813.998-1.733-1.416-.816c.129-.418.218-.853-.218,1.313Zm-4.5,1.5c-.827,0-1.5-.673-1.5-1.5s.673-1.5,1.5-1.5,1.5.673,1.5,1.5-.673,1.5-1.5,1.5Zm-8-1.5c0-1.459.397-2.822,1.079-4h-6.579c-2.481,0-4.5,2.019-4.5,4.5v5.5h12.721c-1.665-1.466-2.721-3.607-2.721-6Z"/>
                     </svg>
                 </div>
-                <div class="card-header bg-primary text-white">
+                <div class="card-header text-white d-flex align-items-center justify-content-between">
                     <h1 class="h3 mb-0">Shelly Konfiguration</h1>
+                    <img src="logo.png" alt="Logo" style="height: 40px;">
                 </div>
                 <div class="card-body">
                     <div id="userPinStep">
                         <p class="mb-2">Bitte gib die PIN ein, um die vorbereitete Geräteliste zu laden.</p>
                         <div class="input-group">
-                            <input type="password" id="pinInput" class="form-control" maxlength="4" placeholder="PIN" inputmode="numeric">
+                            <input type="password" id="pinInput" class="form-control" placeholder="PIN" inputmode="numeric">
                             <button id="loadUserListBtn" onclick="loadDeviceListForUser()" class="btn btn-primary">Laden</button>
                         </div>
                     </div>
-
                     <div id="userMainStep" class="d-none">
                         <div class="row g-4">
                             <div class="col-md-5">
@@ -58,7 +56,7 @@
                                 </div>
                                 <div class="d-grid gap-2">
                                     <button id="scanUserBtn" onclick="scanForUserDevices()" class="btn btn-info">
-                                        <span class="spinner-border spinner-border-sm me-2 d-none" role="status" id="scanUserBtnSpinner"></span>
+                                        <span class="spinner-border spinner-border-sm me-2 d-none" id="scanUserBtnSpinner"></span>
                                         Geräte suchen & auflisten
                                     </button>
                                     <button id="configureBtn" onclick="startUserConfiguration()" class="btn btn-primary" disabled>
@@ -68,7 +66,7 @@
                             </div>
                             <div class="col-md-7">
                                 <div id="userDeviceListContainer" class="d-none">
-                                    <h2 class="h5">2. Geräte in Reichweite</h2>
+                                    <h2 class="h5">2. Geräteliste</h2>
                                     <div id="userShellyList" class="list-group"></div>
                                     <div id="notFoundDevices" class="mt-4 d-none">
                                         <div class="alert alert-warning">
@@ -81,7 +79,7 @@
                             </div>
                         </div>
                         <div class="mt-4">
-                            <h3 class="h6">Protokoll für Endbenutzer</h3>
+                            <h3 class="h6">Protokoll</h3>
                             <pre id="userDebugLog" class="form-control bg-dark text-white" style="height: 150px; font-size: 0.8em;"></pre>
                         </div>
                     </div>
@@ -91,12 +89,12 @@
 
         <div id="adminLogin" class="d-none">
             <div class="card shadow-sm mx-auto" style="max-width: 400px;">
-                <div class="card-header bg-danger text-white"><h1 class="h3 mb-0">Admin-Login</h1></div>
+                <div class="card-header text-white"><h1 class="h3 mb-0">Admin-Login</h1></div>
                 <div class="card-body">
                     <p>Bitte gib das Admin-Passwort ein.</p>
                     <input type="password" id="adminPasswordInput" class="form-control mb-2">
                     <div class="d-grid gap-2">
-                        <button onclick="checkAdminPassword()" class="btn btn-danger">Einloggen</button>
+                        <button onclick="checkAdminPassword()" class="btn btn-primary">Einloggen</button>
                         <button class="btn btn-secondary" onclick="showUserMode()">Zurück</button>
                     </div>
                 </div>
@@ -105,25 +103,28 @@
         
         <div id="adminPanel" class="d-none">
             <div class="card shadow-sm">
-                <div class="card-header bg-danger text-white"><h1 class="h3 mb-0">Geräte-Verwaltung</h1></div>
+                <div class="card-header text-white"><h1 class="h3 mb-0">Geräte-Verwaltung</h1></div>
                 <div class="card-body">
-                    <div class="d-flex gap-2 mb-3">
+                    <div class="d-flex flex-wrap gap-2 mb-3 align-items-center border-bottom pb-3">
                         <button id="adminScanBtn" onclick="scanForNewDevices()" class="btn btn-info">
                             <span class="spinner-border spinner-border-sm me-2 d-none" id="adminScanBtnSpinner"></span>
                             Nach neuen Geräten suchen
                         </button>
-                        <button onclick="saveChangesToServer()" class="btn btn-primary">Änderungen speichern</button>
-                        <button class="btn btn-secondary ms-auto" onclick="showUserMode()">Zum Benutzermodus</button>
+                        <button onclick="saveChangesToServer()" class="btn btn-success">Änderungen speichern</button>
+                        <div class="input-group ms-md-auto" style="max-width: 250px;">
+                            <input type="password" id="adminPinInput" class="form-control" placeholder="PIN für Liste">
+                            <button class="btn btn-primary" onclick="loadAndDisplayDevicesForAdmin()">Laden</button>
+                        </div>
+                        <button class="btn btn-secondary" onclick="showUserMode()">Benutzermodus</button>
                     </div>
-
                     <div class="table-responsive">
-                        <table id="deviceListTable" class="table table-striped table-hover">
-                            <thead class="table-light">
+                        <table id="deviceListTable" class="table table-hover">
+                            <thead>
                                 <tr>
                                     <th>Modell / SSID</th>
-                                    <th>Generation</th>
-                                    <th>Bemerkung / Raum</th>
-                                    <th>Name (Home Assistant)</th>
+                                    <th>Gen</th>
+                                    <th>Bemerkung</th>
+                                    <th>Name (HA)</th>
                                     <th>Zuletzt Konfiguriert</th>
                                     <th>Aktionen</th>
                                 </tr>
@@ -131,7 +132,6 @@
                             <tbody></tbody>
                         </table>
                     </div>
-                    
                     <div class="mt-3">
                         <h3 class="h6">Debug-Protokoll</h3>
                         <pre id="adminDebugLog" class="form-control bg-dark text-white" style="height: 200px; font-size: 0.8em;"></pre>
@@ -139,10 +139,8 @@
                 </div>
             </div>
         </div>
-
     </div>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="script.js?v=2.3.2"></script>
-
+    <script src="script.js?v=0.5.1"></script>
 </body>
 </html>
