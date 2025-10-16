@@ -236,8 +236,8 @@ function renderDeviceTable() {
             <td>${device.haName || ''}</td>
             <td class="small">${device.lastConfigured || 'Nie'}</td>
             <td>
-                <button class="btn btn-sm btn-outline-primary" onclick="editDeviceRow('${device.mac}')">Edit</button>
-                <button class="btn btn-sm btn-outline-danger ms-1" onclick="deleteDeviceRow('${device.mac}')">Del</button>
+                <button class="btn btn-sm btn-outline-primary" onclick="editDeviceRow('${device.mac}')">Bearbeiten</button>
+                <button class="btn btn-sm btn-outline-danger ms-1" onclick="deleteDeviceRow('${device.mac}')">Löschen</button>
             </td>
         `;
         tableBody.appendChild(tr);
