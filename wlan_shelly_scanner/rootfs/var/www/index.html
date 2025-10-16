@@ -12,7 +12,6 @@
         .signal-good { color: var(--bs-success); }
         .signal-medium { color: var(--bs-warning); }
         .signal-poor { color: var(--bs-danger); }
-        /* Admin Icon: weiß, bei Hover #d60b52 */
         #settingsIcon svg path { fill: white; transition: fill 0.2s ease-in-out; }
         #settingsIcon:hover svg path { fill: #d60b52; }
         #adminLogin.d-none { display: none !important; }
@@ -77,8 +76,8 @@
                                             <thead>
                                                 <tr>
                                                     <th></th>
-                                                    <th>Gerät / Bemerkung</th>
-                                                    <th>Modell / Gen</th>
+                                                    <th>Name (HA) / Bemerkung</th>
+                                                    <th>Modell / SSID</th>
                                                     <th>AP Signal</th>
                                                     <th>Zuletzt Konfiguriert</th>
                                                 </tr>
@@ -160,6 +159,6 @@
         </div>
     </div>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="script.js?v=2.7.1"></script>
+    <script src="script.js?v=2.8.0"></script>
 </body>
 </html>
