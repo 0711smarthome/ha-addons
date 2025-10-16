@@ -247,7 +247,8 @@ async def scan_wifi_networks(interface: str, existing_macs: List[str] = None) ->
                         "generation": generation,
                         "model": model,
                         "bemerkung": "",
-                        "haName": ""
+                        "haName": "",
+                        "lastConfigured": "" 
                     })
                 else:
                     log_entries.append("  -> Shelly bereits in der Liste, wird ignoriert.")

@@ -4,109 +4,103 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Shelly WLAN Setup</title>
-    <link rel="stylesheet" href="style.css?v=0.2.1">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <style>
+        /* Kleine Helfer-Klasse für die Icons */
+        .icon-lg { font-size: 1.5rem; }
+        pre { white-space: pre-wrap; word-break: break-all; }
+        .signal-good { color: var(--bs-success); }
+        .signal-medium { color: var(--bs-warning); }
+        .signal-poor { color: var(--bs-danger); }
+    </style>
 </head>
-<body>
-    <div class="container">
-        <div id="settingsIcon" onclick="showAdminLogin()">⚙️</div>
+<body class="bg-light-subtle">
+
+    <div class="toast-container position-fixed top-0 end-0 p-3"></div>
+
+    <div class="container my-4">
 
         <div id="userModeContainer">
-            <div id="step1">
-                <h1>PIN Eingabe</h1>
-                <p>Bitte gib die PIN ein, um fortzufahren.</p>
-                <input type="password" id="pinInput" maxlength="4" inputmode="numeric" pattern="[0-9]*">
-                <button onclick="checkPin()">Bestätigen</button>
-                <p id="pinError" class="error-message"></p>
-            </div>
-
-            <div id="step2" style="display: none;">
-                <h1>WLAN Konfiguration (Benutzer)</h1>
-                
-                <div id="userWifiCredentials">
-                    <h2>1. Deine WLAN-Zugangsdaten</h2>
-                    <p>Gib die Zugangsdaten für dein Heim-WLAN ein.</p>
-                    <label for="userSsid">WLAN-Name (SSID):</label>
-                    <input type="text" id="userSsid" name="userSsid" required>
-                    <label for="userPassword">WLAN-Passwort:</label>
-                    <input type="password" id="userPassword" name="userPassword" required>
-                    <button type="button" class="scan-button" onclick="loadAndScanForUser()">Geräte suchen</button>
+            <div class="card shadow-sm position-relative">
+                <div class="position-absolute top-0 end-0 p-2" id="settingsIcon" onclick="showAdminLogin()">
+                     <?xml version="1.0" encoding="UTF-8"?>
+                    <svg xmlns="http://www.w3.org/2000/svg" id="Layer_1" data-name="Layer 1" viewBox="0 0 24 24" class="w-8 h-8" width="32" height="32" style="cursor: pointer; opacity: 0.6;" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.6">
+                      <path d="m8,12c-3.309,0-6-2.691-6-6S4.691,0,8,0s6,2.691,6,6-2.691,6-6,6Zm14.5,6c0-.46-.089-.895-.218-1.313l1.416-.816-.998-1.733-1.411.813c-.605-.652-1.393-1.125-2.289-1.33v-1.621h-2v1.621c-.896.205-1.685.678-2.289,1.33l-1.411-.813-.998,1.733,1.416.816c-.129.418-.218.853-.218,1.313s.089.895.218,1.313l-1.416.816.998,1.733,1.411-.813c.605.652,1.393,1.125,2.289,1.33v1.621h2v-1.621c.896-.205,1.685-.678,2.289-1.33l1.411.813.998-1.733-1.416-.816c.129-.418.218-.853.218-1.313Zm-4.5,1.5c-.827,0-1.5-.673-1.5-1.5s.673-1.5,1.5-1.5,1.5.673,1.5,1.5-.673,1.5-1.5,1.5Zm-8-1.5c0-1.459.397-2.822,1.079-4h-6.579c-2.481,0-4.5,2.019-4.5,4.5v5.5h12.721c-1.665-1.466-2.721-3.607-2.721-6Z"/>
+                    </svg>
                 </div>
-                
-                <div id="userDeviceSelection" style="display: none;">
-                    <h2>2. Geräte auswählen</h2>
-                    <p>Die folgende Liste zeigt alle vorbereiteten Geräte. Wähle die aus, die aktuell online sind und konfiguriert werden sollen.</p>
-                    <div id="userShellyList">
+                <div class="card-header bg-primary text-white">
+                    <h1 class="h3 mb-0">Shelly Konfiguration</h1>
+                </div>
+                <div class="card-body">
+                    <div id="userPinStep">
+                        <p class="mb-2">Bitte gib die PIN ein, um die vorbereitete Geräteliste zu laden.</p>
+                        <div class="input-group">
+                            <input type="password" id="pinInput" class="form-control" maxlength="4" placeholder="PIN" inputmode="numeric">
+                            <button id="loadUserListBtn" onclick="loadDeviceListForUser()" class="btn btn-primary">Laden</button>
                         </div>
-                    
-                    <div id="notFoundDevices" style="display: none; margin-top: 20px;">
-                        <h3>Geräte nicht gefunden</h3>
-                        <p>Die folgenden Geräte aus deiner Liste konnten nicht gefunden werden. Bitte stelle sicher, dass sie eingeschaltet und in deiner Nähe sind.</p>
-                        <ul id="notFoundList"></ul>
-                        <p>Bei Problemen, nutze die offizielle Shelly App oder unsere <a href="https_deine_webseite.de/anleitung.pdf" target="_blank">Anleitung</a>.</p>
                     </div>
 
-                    <button type="button" onclick="startUserConfiguration()">Ausgewählte Geräte konfigurieren</button>
-                </div>
-
-                <div id="userProgressArea" style="display: none;">
-                    <hr>
-                    <h2>Konfigurations-Fortschritt</h2>
-                    <pre id="userLogOutput"></pre>
-                    <button type="button" onclick="restartUserMode()">Vorgang neu starten</button>
+                    <div id="userMainStep" class="d-none">
+                        <div class="row g-4">
+                            <div class="col-md-5">
+                                <h2 class="h5">1. Zugangsdaten & Aktionen</h2>
+                                <div class="mb-3">
+                                    <label for="userSsid" class="form-label">WLAN-Name (SSID)</label>
+                                    <input type="text" id="userSsid" class="form-control">
+                                </div>
+                                <div class="mb-3">
+                                    <label for="userPassword" class="form-label">WLAN-Passwort</label>
+                                    <input type="password" id="userPassword" class="form-control">
+                                </div>
+                                <div class="d-grid gap-2">
+                                    <button id="scanUserBtn" onclick="scanForUserDevices()" class="btn btn-success">
+                                        <span class="spinner-border spinner-border-sm me-2 d-none" role="status" id="scanUserBtnSpinner"></span>
+                                        Geräte suchen & auflisten
+                                    </button>
+                                    <button id="configureBtn" onclick="startUserConfiguration()" class="btn btn-primary" disabled>
+                                        Ausgewählte Geräte konfigurieren
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="col-md-7">
+                                <div id="userDeviceListContainer" class="d-none">
+                                    <h2 class="h5">2. Geräte in Reichweite</h2>
+                                    <div id="userShellyList" class="list-group"></div>
+                                    <div id="notFoundDevices" class="mt-4 d-none">
+                                        <div class="alert alert-warning">
+                                            <h4 class="alert-heading">Nicht gefundene Geräte</h4>
+                                            <ul id="notFoundList" class="mb-0"></ul>
+                                            <hr><p class="mb-0 small">Stellen Sie sicher, dass diese Geräte eingeschaltet sind.</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="mt-4">
+                            <h3 class="h6">Protokoll für Endbenutzer</h3>
+                            <pre id="userDebugLog" class="form-control bg-dark text-success" style="height: 150px; font-size: 0.8em;"></pre>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
 
-        <div id="adminLogin" style="display: none;">
-            <h1>Admin-Login</h1>
-            <p>Bitte gib das Admin-Passwort ein.</p>
-            <input type="password" id="adminPasswordInput">
-            <button onclick="checkAdminPassword()">Einloggen</button>
-            <p id="adminError" class="error-message"></p>
-            <button class="secondary-button" onclick="showUserMode()">Zurück zum Benutzermodus</button>
-        </div>
-
-        <div id="adminPanel" style="display: none;">
-            <div id="adminPinPrompt">
-                <h1>Geräteliste laden</h1>
-                <p>Um die gespeicherte Geräteliste zu laden und zu entschlüsseln, gib bitte die PIN des Benutzermodus ein.</p>
-                <input type="password" id="adminUserPinInput" maxlength="4" inputmode="numeric" pattern="[0-9]*">
-                <button onclick="loadAndDisplayDevices()">Laden & Entschlüsseln</button>
-                <p id="adminPinError" class="error-message"></p>
-                <button class="secondary-button" onclick="showUserMode()">Zurück zum Benutzermodus</button>
-            </div>
-
-            <div id="adminDeviceManager" style="display: none;">
-                <h1>Geräte-Verwaltung</h1>
-                <p>Hier kannst du erkannte Shelly-Geräte verwalten, bevor du sie im Benutzermodus konfigurierst.</p>
-                
-                <div class="admin-actions">
-                    <button class="scan-button" onclick="scanForNewDevices()">Nach neuen Geräten suchen</button>
-                    <button onclick="saveChangesToServer()">Änderungen speichern</button>
+        <div id="adminLogin" class="d-none">
+            <div class="card shadow-sm mx-auto" style="max-width: 400px;">
+                <div class="card-header bg-danger text-white"><h1 class="h3 mb-0">Admin-Login</h1></div>
+                <div class="card-body">
+                    <p>Bitte gib das Admin-Passwort ein.</p>
+                    <input type="password" id="adminPasswordInput" class="form-control mb-2">
+                    <div class="d-grid gap-2">
+                        <button onclick="checkAdminPassword()" class="btn btn-danger">Einloggen</button>
+                        <button class="btn btn-secondary" onclick="showUserMode()">Zurück</button>
+                    </div>
                 </div>
-
-                <div class="table-container">
-                    <table id="deviceListTable">
-                        <thead>
-                            <tr>
-                                <th>Modell / SSID</th>
-                                <th>Bemerkung / Raum</th>
-                                <th>Name für Home Assistant</th>
-                                <th>Aktionen</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            </tbody>
-                    </table>
-                </div>
-                <hr>
-                <h2>Debug-Protokoll</h2>
-                <pre id="adminDebugLog"></pre>
-                <button class="secondary-button" onclick="showUserMode()">Zurück zum Benutzermodus</button>
             </div>
         </div>
-
-    </div>
-    <script src="script.js?v=0.2.1"></script>
-</body>
-</html>
+        
+        <div id="adminPanel" class="d-none">
+            <div class="card shadow-sm">
+                <div class="card-header bg-danger text-white"><h1 class="h3 mb-0">Geräte-Verwaltung</h1></div>
+                <div class="card-body">

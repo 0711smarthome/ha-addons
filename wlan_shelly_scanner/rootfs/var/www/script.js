@@ -1,256 +1,243 @@
-const HARDCODED_PIN = "0711";
+// script.js - v2.1.0 with Bootstrap & dynamic PIN
+
+// === CONFIGURATION ===
 const HARDCODED_ADMIN_PASSWORD = "admin";
 
-// === Globale Variablen ===
-let progressInterval = null;
-let adminDeviceList = []; // Für Admin-Modus
-let userPin = ""; // Für Admin-Modus
-let userShellyDeviceList = []; // Für User-Modus
+// === GLOBAL STATE ===
+let adminDeviceList = [];
+let userDeviceList = [];
+let userPIN = ""; // Die einzige PIN, die verwendet wird
 
-// ====== MODUS-WECHSEL FUNKTIONEN ======
+// ====== UI HELPER FUNCTIONS ======
+
+function showToast(message, type = 'info') {
+    const container = document.querySelector('.toast-container');
+    const toastEl = document.createElement('div');
+    toastEl.className = `toast align-items-center text-white bg-${type} border-0`;
+    toastEl.setAttribute('role', 'alert');
+    toastEl.setAttribute('aria-live', 'assertive');
+    toastEl.setAttribute('aria-atomic', 'true');
+    
+    toastEl.innerHTML = `
+        <div class="d-flex">
+            <div class="toast-body">${message}</div>
+            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+        </div>
+    `;
+    container.appendChild(toastEl);
+    
+    const toast = new bootstrap.Toast(toastEl, { delay: 3000 });
+    toast.show();
+    toastEl.addEventListener('hidden.bs.toast', () => toastEl.remove());
+}
+
+function toggleSpinner(spinnerId, show) {
+    document.getElementById(spinnerId)?.classList.toggle('d-none', !show);
+}
+
+// ====== MODE SWITCHING LOGIC ======
 
 function showAdminLogin() {
-    document.getElementById('userModeContainer').style.display = 'none';
-    document.getElementById('adminPanel').style.display = 'none';
-    document.getElementById('adminLogin').style.display = 'block';
-    document.getElementById('adminError').textContent = '';
-    document.getElementById('adminPasswordInput').value = '';
+    document.getElementById('userModeContainer').classList.add('d-none');
+    document.getElementById('adminPanel').classList.add('d-none');
+    document.getElementById('adminLogin').classList.remove('d-none');
 }
 
 function checkAdminPassword() {
     const adminPassword = document.getElementById('adminPasswordInput').value;
-    const adminError = document.getElementById('adminError');
     if (adminPassword === HARDCODED_ADMIN_PASSWORD) {
-        document.getElementById('adminLogin').style.display = 'none';
-        document.getElementById('adminPanel').style.display = 'block';
-        document.getElementById('adminPinPrompt').style.display = 'block';
-        document.getElementById('adminDeviceManager').style.display = 'none';
-        document.getElementById('adminPinError').textContent = '';
-        document.getElementById('adminUserPinInput').value = '';
+        document.getElementById('adminLogin').classList.add('d-none');
+        document.getElementById('adminPanel').classList.remove('d-none');
+        adminLog('Admin-Modus entsperrt. Lade Geräteliste zum Bearbeiten.');
+        // PIN-Eingabe im Admin-Modus ist nun Teil des Speicher-Vorgangs
     } else {
-        adminError.textContent = 'Falsches Passwort!';
-        document.getElementById('adminPasswordInput').value = '';
+        showToast('Falsches Admin-Passwort!', 'danger');
     }
 }
 
 function showUserMode() {
-    document.getElementById('adminLogin').style.display = 'none';
-    document.getElementById('adminPanel').style.display = 'none';
-    document.getElementById('userModeContainer').style.display = 'block';
-    restartUserMode(); // Setzt den User-Modus sauber zurück
+    document.getElementById('adminLogin').classList.add('d-none');
+    document.getElementById('adminPanel').classList.add('d-none');
+    document.getElementById('userModeContainer').classList.remove('d-none');
+    
+    // Reset user mode to initial PIN step
+    document.getElementById('userPinStep').classList.remove('d-none');
+    document.getElementById('userMainStep').classList.add('d-none');
+    document.getElementById('pinInput').value = '';
 }
 
-// ====== BENUTZERMODUS FUNKTIONEN ======
+// ====== USER MODE LOGIC ======
 
-function checkPin() {
-    const pinInput = document.getElementById('pinInput').value;
-    const pinError = document.getElementById('pinError');
-    if (pinInput === HARDCODED_PIN) {
-        document.getElementById('step1').style.display = 'none';
-        document.getElementById('step2').style.display = 'block';
-    } else {
-        pinError.textContent = 'Falsche PIN!';
-        document.getElementById('pinInput').value = '';
-    }
+function userLog(message) {
+    const logOutput = document.getElementById('userDebugLog');
+    if (!logOutput) return;
+    const timestamp = new Date().toLocaleTimeString('de-DE');
+    logOutput.textContent += `[${timestamp}] ${message}\n`;
+    logOutput.scrollTop = logOutput.scrollHeight;
 }
 
-async function loadAndScanForUser() {
-    const pin = document.getElementById('pinInput').value;
-    const userSsid = document.getElementById('userSsid').value;
-    const userPassword = document.getElementById('userPassword').value;
-
-    if (!userSsid || !userPassword) {
-        alert("Bitte gib zuerst deine WLAN-Zugangsdaten ein.");
+async function loadDeviceListForUser() {
+    userPIN = document.getElementById('pinInput').value;
+    if (!userPIN) {
+        showToast('Bitte PIN eingeben.', 'warning');
         return;
     }
 
-    // 1. Lade die vom Admin vorbereitete Geräteliste
+    userLog('Lade und entschlüssle Geräteliste mit der angegebenen PIN...');
     try {
         const response = await fetch('api/admin/devices/load', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ pin: pin })
+            body: JSON.stringify({ pin: userPIN })
         });
-        if (!response.ok) throw new Error('Gespeicherte Geräteliste konnte nicht geladen werden. Wurde sie im Admin-Modus gespeichert?');
-        userShellyDeviceList = await response.json();
-    } catch (e) {
-        alert(e.message);
-        return;
-    }
 
-    // 2. Scanne nach allen aktuell sichtbaren WLANs
-    let availableNetworks = [];
+        if (response.status === 400) throw new Error('Entschlüsselung fehlgeschlagen. Falsche PIN?');
+        if (!response.ok) throw new Error('Geräteliste konnte nicht vom Server geladen werden.');
+
+        userDeviceList = await response.json();
+        userLog(`Erfolgreich ${userDeviceList.length} Gerät(e) geladen.`);
+        document.getElementById('userPinStep').classList.add('d-none');
+        document.getElementById('userMainStep').classList.remove('d-none');
+        showToast('Geräteliste erfolgreich geladen.', 'success');
+    } catch (e) {
+        userLog(`FEHLER: ${e.message}`);
+        showToast(e.message, 'danger');
+    }
+}
+
+async function scanForUserDevices() {
+    userLog('Suche nach Shelly-Geräten in Reichweite...');
+    toggleSpinner('scanUserBtnSpinner', true);
+    document.getElementById('scanUserBtn').disabled = true;
+
     try {
         const response = await fetch('api/scan');
-        if (!response.ok) throw new Error('WLAN-Scan fehlgeschlagen.');
-        availableNetworks = await response.json();
-    } catch(e) {
-        alert(e.message);
-        return;
+        if (!response.ok) throw new Error('WLAN-Scan ist fehlgeschlagen.');
+        const availableNetworks = await response.json();
+        userLog(`Scan beendet. ${availableNetworks.length} Netzwerke gefunden.`);
+        renderUserDeviceList(availableNetworks);
+    } catch (e) {
+        userLog(`FEHLER beim Scan: ${e.message}`);
+        showToast(e.message, 'danger');
+    } finally {
+        toggleSpinner('scanUserBtnSpinner', false);
+        document.getElementById('scanUserBtn').disabled = false;
     }
-    
-    // 3. Wechsle die Ansicht und zeige die gemischte Liste an
-    document.getElementById('userWifiCredentials').style.display = 'none';
-    document.getElementById('userDeviceSelection').style.display = 'block';
-    renderUserDeviceList(availableNetworks);
 }
 
 function renderUserDeviceList(availableNetworks) {
+    const container = document.getElementById('userDeviceListContainer');
     const listDiv = document.getElementById('userShellyList');
     const notFoundDiv = document.getElementById('notFoundDevices');
     const notFoundList = document.getElementById('notFoundList');
     listDiv.innerHTML = '';
     notFoundList.innerHTML = '';
+    let anyFound = false;
     let anyNotFound = false;
 
     const foundSsids = new Map(availableNetworks.map(net => [net.ssid, net.signal]));
 
-    userShellyDeviceList.forEach(device => {
+    userDeviceList.forEach(device => {
         if (foundSsids.has(device.ssid)) {
+            anyFound = true;
             const signal = foundSsids.get(device.ssid);
-            const signalQuality = signal > 70 ? 'good' : signal > 40 ? 'medium' : 'poor';
-            const itemHtml = `
-                <div class="wifi-item">
-                    <label>
-                        <input type="checkbox" name="user_selected_shelly" value="${device.mac}" checked>
+            const signalClass = signal > 70 ? 'signal-good' : signal > 40 ? 'signal-medium' : 'signal-poor';
+            listDiv.innerHTML += `
+                <div class="list-group-item">
+                    <input class="form-check-input me-1" type="checkbox" value="${device.mac}" id="user_shelly_${device.mac}" name="user_selected_shelly" checked>
+                    <label class="form-check-label stretched-link" for="user_shelly_${device.mac}">
                         <strong>${device.haName || device.model}</strong> (${device.bemerkung || 'Keine Bemerkung'})
-                        <span class="signal-strength ${signalQuality}">Signal: ${signal}%</span>
                     </label>
+                    <span class="badge float-end ${signalClass}">${signal}%</span>
                 </div>
             `;
-            listDiv.innerHTML += itemHtml;
         } else {
             anyNotFound = true;
-            const itemHtml = `<li>${device.haName || device.model} (${device.bemerkung || 'Keine Bemerkung'})</li>`;
-            notFoundList.innerHTML += itemHtml;
+            notFoundList.innerHTML += `<li>${device.haName || device.model}</li>`;
         }
     });
     
-    notFoundDiv.style.display = anyNotFound ? 'block' : 'none';
+    container.classList.remove('d-none');
+    notFoundDiv.classList.toggle('d-none', !anyNotFound);
+    document.getElementById('configureBtn').disabled = !anyFound;
+    userLog('Geräteliste aktualisiert. Wähle die Geräte aus, die konfiguriert werden sollen.');
 }
 
 async function startUserConfiguration() {
     const userSsid = document.getElementById('userSsid').value;
     const userPassword = document.getElementById('userPassword').value;
 
-    const selectedMacs = Array.from(document.querySelectorAll('input[name="user_selected_shelly"]:checked')).map(cb => cb.value);
-    const devicesToConfigure = userShellyDeviceList.filter(dev => selectedMacs.includes(dev.mac));
-
-    if (devicesToConfigure.length === 0) {
-        alert('Bitte wähle mindestens ein gefundenes Gerät aus.');
+    if (!userSsid || !userPassword) {
+        showToast('WLAN-Zugangsdaten dürfen nicht leer sein.', 'warning');
         return;
     }
-    
-    document.getElementById('userDeviceSelection').style.display = 'none';
-    document.getElementById('userProgressArea').style.display = 'block';
-    document.getElementById('userLogOutput').textContent = 'Initialisiere Konfiguration...\n';
-    
-    await fetch('api/configure', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            selectedDevices: devicesToConfigure,
-            userSsid: userSsid,
-            userPassword: userPassword
-        })
-    });
 
-    progressInterval = setInterval(updateProgressForUser, 2000);
-}
+    const selectedMacs = Array.from(document.querySelectorAll('input[name="user_selected_shelly"]:checked')).map(cb => cb.value);
+    const devicesToConfigure = userDeviceList.filter(dev => selectedMacs.includes(dev.mac));
 
-async function updateProgressForUser() {
-    const logOutput = document.getElementById('userLogOutput');
+    if (devicesToConfigure.length === 0) {
+        showToast('Keine Geräte zur Konfiguration ausgewählt.', 'warning');
+        return;
+    }
+
+    userLog(`Starte Konfiguration für ${devicesToConfigure.length} Gerät(e)...`);
+    document.getElementById('configureBtn').disabled = true;
+
     try {
-        const response = await fetch('api/progress?' + new Date().getTime());
-        const progressText = await response.text();
-        logOutput.textContent = progressText;
-        logOutput.scrollTop = logOutput.scrollHeight;
+        const response = await fetch('api/configure', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ selectedDevices: devicesToConfigure, userSsid, userPassword })
+        });
+        if (!response.ok) throw new Error('Konfigurations-Task konnte nicht gestartet werden.');
         
-        if (progressText.includes("Konfiguration abgeschlossen")) {
-            clearInterval(progressInterval);
-        }
-    } catch (error) {
-        logOutput.textContent += "\nFehler beim Abrufen des Fortschritts.";
-        clearInterval(progressInterval);
+        // Update timestamp for configured devices locally
+        const now = new Date().toLocaleString('de-DE');
+        userDeviceList.forEach(device => {
+            if (selectedMacs.includes(device.mac)) {
+                device.lastConfigured = now;
+            }
+        });
+
+        // Save the updated list in the background
+        await fetch('api/admin/devices/save', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ pin: userPIN, devices: userDeviceList })
+        });
+        userLog("Timestamp für konfigurierte Geräte in der Liste gespeichert.");
+
+    } catch (e) {
+        userLog(`FEHLER: ${e.message}`);
+        showToast(e.message, 'danger');
     }
 }
 
-function restartUserMode() {
-    if(progressInterval) clearInterval(progressInterval);
-    document.getElementById('userWifiCredentials').style.display = 'block';
-    document.getElementById('userDeviceSelection').style.display = 'none';
-    document.getElementById('userProgressArea').style.display = 'none';
-    document.getElementById('userSsid').value = '';
-    document.getElementById('userPassword').value = '';
-}
-
-
-// ====== ADMIN-MODUS FUNKTIONEN ======
+// ====== ADMIN MODE LOGIC ======
 
 function adminLog(message) {
     const logOutput = document.getElementById('adminDebugLog');
     if (!logOutput) return;
-    const timestamp = new Date().toLocaleTimeString();
+    const timestamp = new Date().toLocaleTimeString('de-DE');
     logOutput.textContent += `[${timestamp}] ${message}\n`;
     logOutput.scrollTop = logOutput.scrollHeight;
-}
-
-async function loadAndDisplayDevices() {
-    const pinInput = document.getElementById('adminUserPinInput');
-    const errorP = document.getElementById('adminPinError');
-    userPin = pinInput.value;
-    errorP.textContent = 'Lade und entschlüssle...';
-
-    if (!userPin) {
-        errorP.textContent = 'Bitte gib eine PIN ein.';
-        return;
-    }
-
-    try {
-        const response = await fetch('api/admin/devices/load', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ pin: userPin })
-        });
-
-        if (response.status === 400) throw new Error('Entschlüsselung fehlgeschlagen. Falsche PIN?');
-        if (!response.ok) throw new Error(`Serverfehler: ${response.status}`);
-
-        adminDeviceList = await response.json();
-        
-        document.getElementById('adminPinPrompt').style.display = 'none';
-        document.getElementById('adminDeviceManager').style.display = 'block';
-        
-        renderDeviceTable();
-        adminLog(`Erfolgreich ${adminDeviceList.length} Gerät(e) aus der Liste geladen.`);
-
-    } catch (error) {
-        errorP.textContent = `Fehler: ${error.message}`;
-        console.error('Fehler beim Laden der Geräte:', error);
-    }
 }
 
 function renderDeviceTable() {
     const tableBody = document.querySelector('#deviceListTable tbody');
     tableBody.innerHTML = '';
-
-    if (adminDeviceList.length === 0) {
-        tableBody.innerHTML = '<tr><td colspan="5">Keine Geräte in der Liste. Starte einen Scan, um neue Geräte zu finden.</td></tr>';
-        return;
-    }
-    
     adminDeviceList.forEach(device => {
         const tr = document.createElement('tr');
         tr.id = `row-${device.mac}`;
-
         tr.innerHTML = `
-            <td><strong>${device.model || 'Unbekannt'}</strong><br><small>${device.ssid}</small></td>
+            <td><strong>${device.model || 'N/A'}</strong><br><small class="text-muted">${device.ssid}</small></td>
             <td>${device.generation || 'N/A'}</td>
             <td>${device.bemerkung || ''}</td>
             <td>${device.haName || ''}</td>
+            <td class="small">${device.lastConfigured || 'Nie'}</td>
             <td>
-                <button class="table-button" onclick="editDeviceRow('${device.mac}')">Bearbeiten</button>
-                <button class="table-button delete-btn" onclick="deleteDeviceRow('${device.mac}')">Löschen</button>
+                <button class="btn btn-sm btn-outline-primary" onclick="editDeviceRow('${device.mac}')">Edit</button>
+                <button class="btn btn-sm btn-outline-danger ms-1" onclick="deleteDeviceRow('${device.mac}')">Del</button>
             </td>
         `;
         tableBody.appendChild(tr);
@@ -260,51 +247,38 @@ function renderDeviceTable() {
 function editDeviceRow(mac) {
     const device = adminDeviceList.find(d => d.mac === mac);
     if (!device) return;
-
     const row = document.getElementById(`row-${mac}`);
+    if (!device.haName) device.haName = generateHaName(device);
     
-    if (!device.haName) {
-        device.haName = generateHaName(device);
-    }
-    
-    // Die Spalten sind jetzt: Modell, Gen, Bemerkung, HA-Name, Aktionen
-    row.cells[2].innerHTML = `<input type="text" class="editable-input" value="${device.bemerkung || ''}" placeholder="z.B. Wohnzimmer Decke">`;
-    row.cells[3].innerHTML = `<input type="text" class="editable-input" value="${device.haName || ''}">`;
-    row.cells[4].innerHTML = `
-        <button class="table-button save-row-btn" onclick="saveDeviceRow('${mac}')">OK</button>
-        <button class="table-button" onclick="renderDeviceTable()">Abbrechen</button>
+    row.cells[2].innerHTML = `<input type="text" class="form-control form-control-sm" value="${device.bemerkung || ''}">`;
+    row.cells[3].innerHTML = `<input type="text" class="form-control form-control-sm" value="${device.haName || ''}">`;
+    row.cells[5].innerHTML = `
+        <button class="btn btn-sm btn-success" onclick="saveDeviceRow('${device.mac}')">OK</button>
+        <button class="btn btn-sm btn-secondary ms-1" onclick="renderDeviceTable()">X</button>
     `;
 }
 
 function saveDeviceRow(mac) {
     const device = adminDeviceList.find(d => d.mac === mac);
     if (!device) return;
-
     const row = document.getElementById(`row-${mac}`);
-    
-    const bemerkungInput = row.cells[2].querySelector('input');
-    const haNameInput = row.cells[3].querySelector('input');
-
-    device.bemerkung = bemerkungInput.value;
-    device.haName = haNameInput.value;
-
+    device.bemerkung = row.cells[2].querySelector('input').value;
+    device.haName = row.cells[3].querySelector('input').value;
     renderDeviceTable();
 }
 
 function deleteDeviceRow(mac) {
-    if (confirm(`Soll das Gerät mit der MAC ${mac} wirklich aus der Liste gelöscht werden?`)) {
+    if (confirm(`Soll das Gerät mit der MAC ${mac} wirklich gelöscht werden?`)) {
         adminDeviceList = adminDeviceList.filter(d => d.mac !== mac);
         renderDeviceTable();
-        adminLog(`Gerät mit MAC ${mac} aus der Liste entfernt. Nicht vergessen zu speichern!`);
+        adminLog(`Gerät ${mac} entfernt. Speichern nicht vergessen!`);
     }
 }
 
 async function scanForNewDevices() {
-    const scanButton = document.querySelector('#adminDeviceManager .scan-button');
-    const originalText = scanButton.textContent;
-    scanButton.textContent = 'Scanne...';
-    scanButton.disabled = true;
-    adminLog("Manueller Scan für neue Geräte gestartet...");
+    adminLog('Starte Suche nach neuen Geräten...');
+    toggleSpinner('adminScanBtnSpinner', true);
+    document.getElementById('adminScanBtn').disabled = true;
 
     try {
         const response = await fetch('api/admin/scan', {
@@ -312,54 +286,50 @@ async function scanForNewDevices() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ devices: adminDeviceList })
         });
-
-        const responseData = await response.json();
-
-        if (responseData.logs && responseData.logs.length > 0) {
-            responseData.logs.forEach(logMsg => adminLog(logMsg));
-        }
-
-        if (!response.ok) throw new Error(responseData.details || 'Scan auf dem Server fehlgeschlagen');
-
-        const newDevices = responseData.new_devices || [];
+        const data = await response.json();
+        if(data.logs) data.logs.forEach(log => adminLog(log));
+        if (!response.ok) throw new Error(data.details || 'Scan fehlgeschlagen');
+        
+        const newDevices = data.new_devices || [];
         if (newDevices.length > 0) {
             newDevices.forEach(dev => adminDeviceList.push(dev));
-            adminLog(`ERFOLG: ${newDevices.length} neue(s) Shelly-Gerät(e) gefunden und zur Liste hinzugefügt.`);
             renderDeviceTable();
+            showToast(`${newDevices.length} neue(s) Gerät(e) gefunden!`, 'success');
         } else {
-            adminLog("INFO: Scan beendet. Keine *neuen* Shelly-Geräte im AP-Modus gefunden.");
+            showToast('Keine neuen Geräte gefunden.', 'info');
         }
-
-    } catch (error) {
-        adminLog(`FEHLER beim Scannen: ${error.message}`);
-        console.error('Scan-Fehler:', error);
+    } catch (e) {
+        adminLog(`FEHLER: ${e.message}`);
+        showToast(e.message, 'danger');
     } finally {
-        scanButton.textContent = originalText;
-        scanButton.disabled = false;
+        toggleSpinner('adminScanBtnSpinner', false);
+        document.getElementById('adminScanBtn').disabled = false;
     }
 }
 
 async function saveChangesToServer() {
-    if (!userPin) {
-        adminLog("FEHLER: Speichern nicht möglich. Keine gültige PIN vorhanden. Bitte lade die Liste neu.");
-        return;
+    if (!userPIN) {
+        const newPin = prompt("Zum Verschlüsseln der Liste bitte eine PIN für den Benutzermodus festlegen (4 Ziffern):", "");
+        if (!newPin || !/^\d{4}$/.test(newPin)) {
+            showToast('Speichern abgebrochen. Ungültige PIN.', 'warning');
+            return;
+        }
+        userPIN = newPin;
     }
-    adminLog("Speichere Änderungen auf dem Server...");
-    
+
+    adminLog('Speichere Geräteliste...');
     try {
         const response = await fetch('api/admin/devices/save', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ pin: userPin, devices: adminDeviceList })
+            body: JSON.stringify({ pin: userPIN, devices: adminDeviceList })
         });
-
-        if (!response.ok) throw new Error(`Speichern fehlgeschlagen: ${response.statusText}`);
-        
-        adminLog(`ERFOLG: ${adminDeviceList.length} Gerät(e) erfolgreich verschlüsselt und gespeichert.`);
-
-    } catch (error) {
-        adminLog(`FEHLER beim Speichern: ${error.message}`);
-        console.error('Speicher-Fehler:', error);
+        if (!response.ok) throw new Error('Speichern auf dem Server fehlgeschlagen.');
+        showToast('Geräteliste erfolgreich gespeichert!', 'success');
+        adminLog(`Geräteliste erfolgreich gespeichert. Die PIN lautet: ${userPIN}`);
+    } catch(e) {
+        adminLog(`FEHLER: ${e.message}`);
+        showToast(e.message, 'danger');
     }
 }
 
