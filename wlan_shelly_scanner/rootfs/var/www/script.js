@@ -1,4 +1,4 @@
-// script.js - v0.6.0
+// script.js - v2.5.1
 
 // === CONFIGURATION ===
 const HARDCODED_ADMIN_PASSWORD = "admin";
@@ -77,6 +77,10 @@ async function loadDeviceListForUser() {
         if (response.status === 400) throw new Error('Entschlüsselung fehlgeschlagen. Falsche PIN?');
         if (!response.ok) throw new Error('Geräteliste konnte nicht geladen werden.');
         userDeviceList = await response.json();
+        
+        // NEU: JSON-Liste im Debug-Fenster ausgeben
+        userLog(`Geladene JSON-Liste:\n${JSON.stringify(userDeviceList, null, 2)}`);
+
         userLog(`Erfolgreich ${userDeviceList.length} Gerät(e) geladen.`);
         document.getElementById('userPinStep').classList.add('d-none');
         document.getElementById('userMainStep').classList.remove('d-none');
@@ -199,6 +203,10 @@ async function loadAndDisplayDevicesForAdmin() {
         if (response.status === 400) throw new Error('Entschlüsselung fehlgeschlagen. Falsche PIN?');
         if (!response.ok) throw new Error('Serverfehler beim Laden.');
         adminDeviceList = await response.json();
+        
+        // NEU: JSON-Liste im Debug-Fenster ausgeben
+        adminLog(`Geladene JSON-Liste:\n${JSON.stringify(adminDeviceList, null, 2)}`);
+
         renderDeviceTable();
         showToast(`Erfolgreich ${adminDeviceList.length} Gerät(e) geladen.`, 'success');
         adminLog(`Erfolgreich ${adminDeviceList.length} Gerät(e) geladen.`);
