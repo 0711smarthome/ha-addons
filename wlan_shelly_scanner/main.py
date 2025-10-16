@@ -297,15 +297,23 @@ class ShellyListener:
 async def handle_lan_scan(request: web.Request) -> web.Response:
     """Sucht via mDNS nach Shelly-Geräten im lokalen Netzwerk."""
     log("Starte LAN-Scan nach Online-Shellys...")
-    zeroconf = Zeroconf()
-    listener = ShellyListener()
-    browser = ServiceBrowser(zeroconf, "_http._tcp.local.", listener)
-
-    await asyncio.sleep(3)  # 3 Sekunden warten, um Antworten zu sammeln
-    zeroconf.close()
-
-    log(f"{len(listener.found_devices)} Shellies im LAN gefunden.")
-    return web.json_response(listener.found_devices)
+    zeroconf = None
+    try:
+        zeroconf = Zeroconf()
+        listener = ShellyListener()
+        browser = ServiceBrowser(zeroconf, "_http._tcp.local.", listener)
+        
+        await asyncio.sleep(3)  # 3 Sekunden warten, um Antworten zu sammeln
+        
+        log(f"{len(listener.found_devices)} Shellies im LAN gefunden.")
+        return web.json_response(listener.found_devices)
+    except Exception as e:
+        log(f"!!! SCHWERER FEHLER im LAN-Scan: {e}")
+        # Gibt einen 500-Fehler mit der genauen Python-Fehlermeldung zurück
+        return web.Response(status=500, text=f"LAN scan failed: {e}")
+    finally:
+        if zeroconf:
+            zeroconf.close()
     
 
 async def handle_scan(request: web.Request) -> web.Response:
