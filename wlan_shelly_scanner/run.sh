@@ -4,35 +4,49 @@ set -e
 
 echo "Start-Skript wird ausgeführt (nmcli-Version)..."
 
-echo "Starte D-Bus System-Dienst..."
-# Prüfe, ob der Socket bereits existiert und versuche andernfalls den Daemon zu starten.
-# WARNUNG: Der Fehler "Address in use" wird ignoriert, da der Host-Dienst aktiv sein kann.
-dbus-daemon --system || echo "WARNUNG: dbus-daemon konnte nicht gestartet werden (evtl. schon aktiv). Weiter."
-sleep 2
-
 # Lese die Interface-Einstellung
 CONFIG_PATH=/data/options.json
 INTERFACE=$(jq --raw-output ".interface" $CONFIG_PATH)
 
-echo "Aktiviere die Netzwerkschnittstelle ${INTERFACE} und setze sie hoch..."
-ip link set ${INTERFACE} up || true
-sleep 3 # Wartezeit für die Hardware-Initialisierung
-
-echo "===== DIAGNOSE-CHECK ====="
-echo "--> Prüfe laufende Prozesse:"
-ps aux | grep -E "dbus" || echo "DIAGNOSE: D-Bus läuft."
-echo "--> Prüfe, ob der D-Bus Socket existiert:"
-if [ -S /var/run/dbus/system_bus_socket ]; then
-    echo "DIAGNOSE: ERFOLG! D-Bus Socket wurde gefunden."
-else
-    echo "DIAGNOSE: FEHLER! D-Bus Socket wurde NICHT gefunden!"
+echo "Starte D-Bus System-Dienst, falls noch nicht aktiv..."
+# Prüfe, ob der Prozess bereits läuft, bevor wir versuchen, ihn zu starten
+if ! pgrep -f "dbus-daemon --system" > /dev/null; then
+    dbus-daemon --system
+    sleep 1 # Gib dem Dienst einen Moment zum Starten
 fi
-echo "--> Prüfe Schnittstellen-Status (mit 'ip'):"
-ip a show ${INTERFACE} || echo "DIAGNOSE: Schnittstelle ${INTERFACE} nicht gefunden oder nicht aktiv."
-echo "=========================="
+
+echo "===== DIAGNOSE-CHECK (Vorher) ====="
+echo "Schnittstellen-Status vor dem Aktivierungsversuch:"
+ip a show ${INTERFACE} || echo "Info: Schnittstelle ${INTERFACE} nicht gefunden."
+echo "==================================="
+
+echo "Versuche, die Netzwerkschnittstelle ${INTERFACE} zu aktivieren..."
+# Versuche, die Schnittstelle hochzufahren. Wir entfernen '|| true', um Fehler zu sehen.
+ip link set ${INTERFACE} up
+
+# Gib dem System Zeit, den Befehl zu verarbeiten
+sleep 2 
+
+echo "===== DIAGNOSE-CHECK (Nachher) ====="
+echo "Prüfe, ob die Schnittstelle jetzt UP oder DORMANT ist..."
+
+# Überprüfe den finalen Zustand der Schnittstelle.
+# grep -q "state UP" || grep -q "state DORMANT" würde nach exakten Zuständen suchen.
+# Eine einfachere Prüfung ist zu schauen, ob das <NO-CARRIER> Flag weg ist oder ob UP im Output steht.
+if ! ip a show ${INTERFACE} | grep -q 'state UP\|state DORMANT'; then
+    echo "KRITISCHER FEHLER: Konnte die Schnittstelle ${INTERFACE} nicht aktivieren. Sie ist weiterhin DOWN."
+    echo "Finaler Status:"
+    ip a show ${INTERFACE}
+    exit 1 # Skript mit Fehler beenden
+fi
+
+echo "ERFOLG: Schnittstelle ${INTERFACE} ist jetzt betriebsbereit."
+echo "Finaler Status:"
+ip a show ${INTERFACE}
+echo "==================================="
 
 echo "Starte Nginx..."
 nginx
 
-echo "Diagnose abgeschlossen. Starte main.py..."
+echo "Voraussetzungen erfüllt. Starte main.py..."
 exec python3 /main.py
