@@ -16,162 +16,147 @@ from aiohttp import web
 from zeroconf import ServiceBrowser, Zeroconf
 import socket
 
-print("==== NEUSTART ====")
-print("======================")
+print("==== NEUSTART des Add-ons ====")
 
 # --- Globale Konstanten und Sperren ---
 LOG_FILE = "/data/progress.log"
 TASK_FILE = "/data/task.json"
 CONFIG_PATH = "/data/options.json"
 ADMIN_DEVICES_FILE = "/data/shelly_devices.json.enc"
-
 CONFIGURE_LOCK = asyncio.Lock()
-
-# --- Token-Management ---
 SUPERVISOR_TOKEN = os.environ.get("SUPERVISOR_TOKEN")
 HEADERS = {"Authorization": f"Bearer {SUPERVISOR_TOKEN}"}
 
 # --- Hilfsfunktionen ---
-
 def log(message: str) -> None:
-    """Schreibt eine Nachricht ins Add-on-Log und in eine Log-Datei."""
-    log_message = f"{time.strftime('%Y-%m-%d %H:%M:%S')} - {message}"
+    log_message = f"[{time.strftime('%H:%M:%S')}] {message}"
     print(log_message, flush=True)
     try:
         with open(LOG_FILE, "a", encoding="utf-8") as f:
             f.write(log_message + "\n")
     except Exception as e:
-        print(f"Error writing to log file: {e}", flush=True)
+        print(f"[{time.strftime('%H:%M:%S')}] FEHLER beim Schreiben der Log-Datei: {e}", flush=True)
 
 def xor_crypt(data: bytes, key: str) -> bytes:
-    """Einfache XOR-Verschlüsselung."""
-    if not key:
-        return data
+    if not key: return data
     key_bytes = key.encode('utf-8')
     return bytes([b ^ k for b, k in zip(data, cycle(key_bytes))])
 
 def parse_shelly_ssid(ssid: str) -> (Optional[str], Optional[str], Optional[str]):
-    """Analysiert eine SSID und extrahiert Modell, Generation und MAC-Adresse."""
     gen234_match = re.match(r'^(Shelly([a-zA-Z0-9\-\_]+))-([0-9A-F]{12})$', ssid, re.IGNORECASE)
     if gen234_match:
-        model_full = f"Shelly {gen234_match.group(2)}"
-        mac = gen234_match.group(3)
-        return "Gen 2/3/4", model_full, mac
-
+        return "Gen 2/3/4", f"Shelly {gen234_match.group(2)}", gen234_match.group(3)
     gen1_match = re.match(r'^(shelly([a-zA-Z0-9\-\_]+))-([0-9A-F]{6})$', ssid, re.IGNORECASE)
     if gen1_match:
-        model = f"Shelly {gen1_match.group(2)}"
-        mac = gen1_match.group(3)
-        return "Gen 1", model, mac
-
+        return "Gen 1", f"Shelly {gen1_match.group(2)}", gen1_match.group(3)
     return None, None, None
 
 async def run_command(cmd: List[str]) -> (bool, str, str):
-    """Führt einen externen Befehl aus und gibt Erfolg, stdout und stderr zurück."""
-    log(f"Führe aus: {' '.join(cmd)}")
-    proc = await asyncio.create_subprocess_exec(
-        *cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE
-    )
+    log(f"DEBUG: Führe Befehl aus: {' '.join(cmd)}")
+    proc = await asyncio.create_subprocess_exec(*cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     stdout, stderr = await proc.communicate()
-    stdout_str = stdout.decode('utf-8').strip()
-    stderr_str = stderr.decode('utf-8').strip()
-    if stdout_str: log(f"Ausgabe: {stdout_str}")
-    if stderr_str: log(f"Fehler-Ausgabe: {stderr_str}")
+    stdout_str, stderr_str = stdout.decode('utf-8').strip(), stderr.decode('utf-8').strip()
+    # Logge nur, wenn es eine relevante Ausgabe gibt
+    if stdout_str: log(f"DEBUG: Ausgabe von '{cmd[0]}': {stdout_str}")
+    if stderr_str: log(f"DEBUG: Fehler-Ausgabe von '{cmd[0]}': {stderr_str}")
     return proc.returncode == 0, stdout_str, stderr_str
 
 async def wait_for_connection(interface: str, timeout: int = 45) -> bool:
-    """Wartet, bis die Schnittstelle eine aktive Verbindung mit einer IP-Adresse hat."""
-    log(f"Warte auf aktive Verbindung und IP-Adresse für '{interface}'...")
+    log(f"INFO: Warte auf IP-Adresse für '{interface}' (max. {timeout}s)...")
     start_time = time.time()
     while time.time() - start_time < timeout:
         success, stdout, _ = await run_command(["nmcli", "-g", "IP4.ADDRESS", "dev", "show", interface])
         if success and '192.168.33' in stdout:
-            log(f"Erfolgreich verbunden! IP-Adresse: {stdout.split('/')[0]}")
+            log(f"ERFOLG: IP-Adresse {stdout.split('/')[0]} erhalten.")
             return True
         await asyncio.sleep(2)
-    log(f"FEHLER: Timeout nach {timeout}s. Keine gültige IP-Adresse für '{interface}' erhalten.")
+    log(f"FEHLER: Timeout bei der IP-Adressvergabe für '{interface}'.")
     return False
 
 # --- Kernlogik ---
-
 async def run_configuration_logic(caller_id: str) -> None:
-    """Hauptlogik zur Konfiguration der Shellies, unterscheidet zwischen Gen1 und Gen2/3/4."""
-    log(f"[{caller_id}] Versuch, die Konfigurations-Sperre zu bekommen...")
-    async with CONFIGURE_LOCK:
-        log(f"[{caller_id}] Sperre erhalten. Konfigurationsprozess wird jetzt exklusiv ausgeführt.")
-        successful_shellies, failed_shellies = [], []
-        try:
-            with open(LOG_FILE, 'w') as f: f.write('')
-            log(f"[{caller_id}] Konfigurationsprozess gestartet...")
-            with open(TASK_FILE, 'r') as f: task = json.load(f)
-            with open(CONFIG_PATH, 'r') as f: config = json.load(f)
+    log(f"INFO: Konfigurations-Task {caller_id} gestartet.")
+    if not await CONFIGURE_LOCK.acquire():
+        log("WARNUNG: Konfigurations-Lock konnte nicht erhalten werden. Breche ab.")
+        return
+    
+    log("INFO: Konfigurations-Sperre erhalten.")
+    successful_shellies, failed_shellies = [], []
+    try:
+        with open(LOG_FILE, 'w') as f: f.write('')
+        log("INFO: Konfigurations-Log zurückgesetzt.")
+        with open(TASK_FILE, 'r') as f: task = json.load(f)
+        with open(CONFIG_PATH, 'r') as f: config = json.load(f)
 
-            selected_devices = task.get("selectedDevices", [])
-            user_ssid, user_password = task.get("userSsid", ""), task.get("userPassword", "")
-            interface = config.get("interface", "wlan0")
+        selected_devices = task.get("selectedDevices", [])
+        user_ssid, user_password = task.get("userSsid", ""), task.get("userPassword", "")
+        interface = config.get("interface", "wlan0")
+        log(f"DEBUG: Task-Daten geladen: {len(selected_devices)} Geräte, SSID '{user_ssid}', Interface '{interface}'")
 
-            if not user_ssid or not selected_devices:
-                log(f"[{caller_id}] FEHLER: Ungültige Aufgabendaten (SSID oder Geräte fehlen).")
-                return
+        if not user_ssid or not selected_devices:
+            log("FEHLER: Ungültige Task-Daten. SSID oder Geräte fehlen.")
+            return
 
-            await run_command(["nmcli", "radio", "wifi", "on"])
+        for device in selected_devices:
+            shelly_ssid = device.get("ssid")
+            generation = device.get("generation", "Gen 1")
+            if not shelly_ssid:
+                log(f"WARNUNG: Überspringe Gerät ohne SSID: {device}")
+                continue
 
-            for device in selected_devices:
-                shelly_ssid = device.get("ssid")
-                generation = device.get("generation", "Gen 1")
-                if not shelly_ssid: continue
+            log(f"--- Starte Verarbeitung für: {shelly_ssid} (Gen: {generation}) ---")
+            await run_command(["nmcli", "connection", "delete", shelly_ssid])
+            log(f"INFO: Versuche, Verbindung zu '{shelly_ssid}' herzustellen...")
+            connect_success, _, _ = await run_command(["nmcli", "device", "wifi", "connect", shelly_ssid, "name", shelly_ssid, "ifname", interface])
 
-                log(f"[{caller_id}] --- Bearbeite: {shelly_ssid} (erkannt als {generation}) ---")
+            if not connect_success or not await wait_for_connection(interface):
+                log(f"FEHLER: Verbindung zu {shelly_ssid} fehlgeschlagen.")
+                failed_shellies.append(shelly_ssid)
                 await run_command(["nmcli", "connection", "delete", shelly_ssid])
-                log(f"[{caller_id}] Versuche Verbindung zu {shelly_ssid}...")
-                connect_success, _, _ = await run_command(["nmcli", "device", "wifi", "connect", shelly_ssid, "name", shelly_ssid, "ifname", interface])
+                continue
 
-                if not connect_success or not await wait_for_connection(interface):
-                    log(f"[{caller_id}] FEHLER: Verbindung zu {shelly_ssid} fehlgeschlagen.")
-                    failed_shellies.append(shelly_ssid)
-                    await run_command(["nmcli", "connection", "delete", shelly_ssid])
-                    continue
+            shelly_ip = "192.168.33.1"
+            configure_url = ""
 
-                shelly_ip = "192.168.33.1"
-                configure_url = ""
+            if "Gen 1" in generation:
+                log("DEBUG: Baue Gen1-Konfigurations-URL...")
+                encoded_ssid, encoded_pass = quote(user_ssid), quote(user_password)
+                configure_url = f"http://{shelly_ip}/settings/sta?ssid={encoded_ssid}&pass={encoded_pass}&enable=1"
+            else:
+                log("DEBUG: Baue Gen2+-Konfigurations-URL...")
+                rpc_payload = {"sta": {"ssid": user_ssid, "pass": user_password, "enable": True}}
+                encoded_config = quote(json.dumps(rpc_payload))
+                configure_url = f"http://{shelly_ip}/rpc/WiFi.SetConfig?config={encoded_config}"
+            log(f"DEBUG: Finale URL: {configure_url.replace(quote(user_password), '********')}")
 
-                if "Gen 1" in generation:
-                    log(f"[{caller_id}] Baue Gen1-Konfigurations-URL...")
-                    encoded_ssid, encoded_pass = quote(user_ssid), quote(user_password)
-                    configure_url = f"http://{shelly_ip}/settings/sta?ssid={encoded_ssid}&pass={encoded_pass}&enable=1"
-                else:
-                    log(f"[{caller_id}] Baue Gen2+-Konfigurations-URL...")
-                    # KORREKTUR: Der gesamte "sta"-Block muss das JSON-Objekt sein.
-                    rpc_payload = {"sta": {"ssid": user_ssid, "pass": user_password, "enable": True}}
-                    encoded_config = quote(json.dumps(rpc_payload))
-                    configure_url = f"http://{shelly_ip}/rpc/WiFi.SetConfig?config={encoded_config}"
-
-                log(f"[{caller_id}] Sende Konfigurationsbefehl an {shelly_ip}...")
-                try:
-                    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=20)) as session:
-                        async with session.get(configure_url) as response:
-                            response_text = await response.text()
-                            if response.status == 200:
-                                log(f"[{caller_id}] Befehl für {shelly_ssid} erfolgreich. Antwort: {response_text}")
-                                successful_shellies.append(shelly_ssid)
-                            else:
-                                log(f"[{caller_id}] FEHLER bei {shelly_ssid}: Shelly-Antwort: {response.status}, Text: {response_text}")
-                                failed_shellies.append(shelly_ssid)
-                except Exception as e:
-                    log(f"[{caller_id}] FEHLER beim Senden des HTTP-Befehls für {shelly_ssid}: {e}")
-                    failed_shellies.append(shelly_ssid)
-                finally:
-                    log(f"[{caller_id}] Trenne Verbindung zu {shelly_ssid}...")
-                    await run_command(["nmcli", "connection", "down", shelly_ssid])
-                    await run_command(["nmcli", "connection", "delete", shelly_ssid])
-        except Exception as e:
-            log(f"[{caller_id}] Ein unerwarteter, schwerer Fehler ist aufgetreten: {e}")
-        finally:
-            log("--- Konfiguration abgeschlossen ---")
-            if successful_shellies: log(f"Erfolgreich: {len(successful_shellies)} Geräte ({', '.join(successful_shellies)})")
-            if failed_shellies: log(f"Fehlgeschlagen: {len(failed_shellies)} Geräte ({', '.join(failed_shellies)})")
-            if os.path.exists(TASK_FILE): os.remove(TASK_FILE)
-            log(f"[{caller_id}] Sperre wird freigegeben.")
+            try:
+                log(f"INFO: Sende Konfigurationsbefehl an {shelly_ip}...")
+                async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=20)) as session:
+                    async with session.get(configure_url) as response:
+                        response_text = await response.text()
+                        if response.status == 200:
+                            log(f"ERFOLG: Befehl für {shelly_ssid} erfolgreich. Antwort: {response_text}")
+                            successful_shellies.append(shelly_ssid)
+                        else:
+                            log(f"FEHLER bei {shelly_ssid}: Shelly-Antwort: Status {response.status}, Text: {response_text}")
+                            failed_shellies.append(shelly_ssid)
+            except Exception as e:
+                log(f"FEHLER beim Senden des HTTP-Befehls für {shelly_ssid}: {e}")
+                failed_shellies.append(shelly_ssid)
+            finally:
+                log(f"INFO: Trenne Verbindung zu {shelly_ssid}...")
+                await run_command(["nmcli", "connection", "down", shelly_ssid])
+                await run_command(["nmcli", "connection", "delete", shelly_ssid])
+    except Exception as e:
+        log(f"FATAL: Ein unerwarteter Fehler ist im Konfigurationsprozess aufgetreten: {e}")
+    finally:
+        log("--- Konfiguration abgeschlossen ---")
+        if successful_shellies: log(f"ERFOLGSBILANZ: {len(successful_shellies)} Geräte ({', '.join(successful_shellies)})")
+        if failed_shellies: log(f"FEHLERBILANZ: {len(failed_shellies)} Geräte ({', '.join(failed_shellies)})")
+        if os.path.exists(TASK_FILE): os.remove(TASK_FILE)
+        CONFIGURE_LOCK.release()
+        log("INFO: Konfigurations-Sperre freigegeben.")
+        
 
 async def scan_wifi_networks(interface: str, existing_macs: List[str] = None) -> (bool, List[Dict[str, Any]], List[str], str):
     """Scannt nach WLANs, parst Shelly-SSIDs und ignoriert bereits bekannte MACs."""
