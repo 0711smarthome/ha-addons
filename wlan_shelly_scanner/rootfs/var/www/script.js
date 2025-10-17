@@ -25,6 +25,49 @@ function toggleSpinner(spinnerId, show) {
     document.getElementById(spinnerId)?.classList.toggle('d-none', !show);
 }
 
+
+// ======POLL USER Progess ======
+async function pollUserProgress(interval = 1500) {
+    userLog('INFO: Starte Fortschrittsabfrage (Polling) des Backend-Logs...');
+    const logOutput = document.getElementById('userDebugLog');
+    const configureBtn = document.getElementById('configureBtn');
+    
+    // Timer-Loop
+    const poller = setInterval(async () => {
+        try {
+            const response = await fetch('api/progress');
+            if (!response.ok) {
+                userLog('FEHLER beim Abrufen des Fortschritts-Logs.');
+                clearInterval(poller);
+                return;
+            }
+            
+            const newLogContent = await response.text();
+            
+            // Log-Ausgabe nur aktualisieren, wenn sie sich unterscheidet
+            if (logOutput.textContent.trim() !== newLogContent.trim()) {
+                logOutput.textContent = newLogContent + '\n';
+                logOutput.scrollTop = logOutput.scrollHeight;
+            }
+            
+            // Prüfen, ob der Konfigurationsprozess abgeschlossen ist (durch Log-Schlüsselwörter)
+            if (newLogContent.includes('--- Konfiguration abgeschlossen ---')) {
+                clearInterval(poller); // Polling beenden
+                configureBtn.disabled = false; // Button wieder aktivieren
+                showToast('Konfiguration abgeschlossen. Details im Log.', 'success');
+                userLog('INFO: Polling beendet. Konfigurations-Task abgeschlossen.');
+
+                // Optional: Liste neu scannen, um Status zu aktualisieren
+                // await scanForUserDevices(); 
+            }
+        } catch (e) {
+            userLog(FEHLER während des Polling: ${e.message});
+            clearInterval(poller);
+            configureBtn.disabled = false;
+        }
+    }, interval);
+}
+
 // ====== MODE SWITCHING LOGIC ======
 function showAdminLogin() {
     document.getElementById('userModeContainer').classList.add('d-none');
@@ -161,18 +204,29 @@ async function startUserConfiguration() {
     const selectedMacs = Array.from(document.querySelectorAll('input[name="user_selected_shelly"]:checked')).map(cb => cb.value);
     const devicesToConfigure = userDeviceList.filter(dev => selectedMacs.includes(dev.mac));
     if (devicesToConfigure.length === 0) { showToast('Keine Geräte zur Konfiguration ausgewählt.', 'warning'); return; }
-    userLog(`Starte Konfiguration für ${devicesToConfigure.length} Gerät(e)...`);
+    
+    // --- Vorbereitung ---
+    userLog(Starte Konfiguration für ${devicesToConfigure.length} Gerät(e)...);
     document.getElementById('configureBtn').disabled = true;
+    
     try {
+        // 1. Task an Backend senden
         const response = await fetch('api/configure', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ selectedDevices: devicesToConfigure, userSsid, userPassword }) });
         if (!response.ok) throw new Error('Konfigurations-Task konnte nicht gestartet werden.');
+        
+        // 2. Frontend-Listen-Timestamp aktualisieren und speichern
         const now = new Date().toLocaleString('de-DE');
         userDeviceList.forEach(device => { if (selectedMacs.includes(device.mac)) device.lastConfigured = now; });
         await fetch('api/admin/devices/save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pin: userPIN, devices: userDeviceList }) });
         userLog("Timestamp für konfigurierte Geräte in der Liste gespeichert.");
+        
+        // 3. NEU: Polling des Fortschritts starten
+        await pollUserProgress(); 
+
     } catch (e) {
-        userLog(`FEHLER: ${e.message}`);
+        userLog(FEHLER: ${e.message});
         showToast(e.message, 'danger');
+        document.getElementById('configureBtn').disabled = false; // Button wieder aktivieren bei Fehler
     }
 }
 
