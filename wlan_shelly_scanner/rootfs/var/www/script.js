@@ -206,7 +206,7 @@ async function startUserConfiguration() {
     if (devicesToConfigure.length === 0) { showToast('Keine Geräte zur Konfiguration ausgewählt.', 'warning'); return; }
     
     // --- Vorbereitung ---
-    userLog(Starte Konfiguration für ${devicesToConfigure.length} Gerät(e)...);
+    userLog(`Starte Konfiguration für ${devicesToConfigure.length} Gerät(e)...`);
     document.getElementById('configureBtn').disabled = true;
     
     try {
