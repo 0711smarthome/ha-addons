@@ -2,50 +2,37 @@
 
 set -e
 
-echo "Start-Skript wird ausgeführt..."
+echo "Start-Skript wird ausgeführt (nmcli-Version)..."
 
+echo "Starte D-Bus System-Dienst..."
+# Prüfe, ob der Socket bereits existiert und versuche andernfalls den Daemon zu starten.
+# WARNUNG: Der Fehler "Address in use" wird ignoriert, da der Host-Dienst aktiv sein kann.
+dbus-daemon --system || echo "WARNUNG: dbus-daemon konnte nicht gestartet werden (evtl. schon aktiv). Weiter."
+sleep 2
+
+# Lese die Interface-Einstellung
 CONFIG_PATH=/data/options.json
 INTERFACE=$(jq --raw-output ".interface" $CONFIG_PATH)
 
-echo "===== System-Voraussetzungen prüfen ====="
+echo "Aktiviere die Netzwerkschnittstelle ${INTERFACE} und setze sie hoch..."
+ip link set ${INTERFACE} up || true
+sleep 3 # Wartezeit für die Hardware-Initialisierung
 
-echo "--> Prüfe, ob D-Bus Socket existiert..."
-if [ ! -S /var/run/dbus/system_bus_socket ]; then
-    echo "KRITISCHER FEHLER: D-Bus Socket nicht gefunden!"
-    exit 1
+echo "===== DIAGNOSE-CHECK ====="
+echo "--> Prüfe laufende Prozesse:"
+ps aux | grep -E "dbus" || echo "DIAGNOSE: D-Bus läuft."
+echo "--> Prüfe, ob der D-Bus Socket existiert:"
+if [ -S /var/run/dbus/system_bus_socket ]; then
+    echo "DIAGNOSE: ERFOLG! D-Bus Socket wurde gefunden."
+else
+    echo "DIAGNOSE: FEHLER! D-Bus Socket wurde NICHT gefunden!"
 fi
-echo "ERFOLG: D-Bus Socket ist verfügbar."
+echo "--> Prüfe Schnittstellen-Status (mit 'ip'):"
+ip a show ${INTERFACE} || echo "DIAGNOSE: Schnittstelle ${INTERFACE} nicht gefunden oder nicht aktiv."
+echo "=========================="
 
-# --- START DER ÄNDERUNGEN ---
-
-echo "--> Konfiguriere NetworkManager für ${INTERFACE}..."
-
-# 1. Dem NetworkManager sagen, dass er die Schnittstelle nicht mehr
-#    automatisch verwalten soll. Das gibt uns die Kontrolle.
-nmcli device set "${INTERFACE}" managed no
-
-# 2. Jetzt, wo der NetworkManager sich nicht mehr einmischt,
-#    können wir die Schnittstelle sicher mit 'ip' hochfahren.
-ip link set "${INTERFACE}" up
-
-sleep 2 # Kurze Pause
-
-echo "--> Überprüfe finalen Status von ${INTERFACE}..."
-if ! ip a show "${INTERFACE}" | grep -q 'state UP\|state DORMANT'; then
-    echo "KRITISCHER FEHLER: Konnte ${INTERFACE} nicht aktivieren."
-    echo "Aktueller Status:"
-    ip a show "${INTERFACE}"
-    exit 1
-fi
-
-# --- ENDE DER ÄNDERUNGEN ---
-
-echo "ERFOLG: Schnittstelle ${INTERFACE} ist jetzt betriebsbereit."
-ip a show "${INTERFACE}"
-echo "=========================================="
-
-echo "Starte Nginx-Server..."
+echo "Starte Nginx..."
 nginx
 
-echo "Voraussetzungen erfüllt. Starte die Hauptanwendung (main.py)..."
+echo "Diagnose abgeschlossen. Starte main.py..."
 exec python3 /main.py
