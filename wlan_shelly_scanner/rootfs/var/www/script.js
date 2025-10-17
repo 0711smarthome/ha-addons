@@ -224,7 +224,7 @@ async function startUserConfiguration() {
         await pollUserProgress(); 
 
     } catch (e) {
-        userLog(FEHLER: ${e.message});
+        userLog(FEHLER: ${e.message}`);
         showToast(e.message, 'danger');
         document.getElementById('configureBtn').disabled = false; // Button wieder aktivieren bei Fehler
     }
