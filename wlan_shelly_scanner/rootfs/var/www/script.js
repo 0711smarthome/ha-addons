@@ -61,7 +61,7 @@ async function pollUserProgress(interval = 1500) {
                 // await scanForUserDevices(); 
             }
         } catch (e) {
-            userLog(FEHLER während des Polling: ${e.message});
+            userLog(FEHLER während des Polling: ${e.message}`);
             clearInterval(poller);
             configureBtn.disabled = false;
         }
