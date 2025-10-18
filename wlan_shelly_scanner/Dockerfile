@@ -22,6 +22,8 @@ RUN rm -f /etc/nginx/http.d/default.conf
 COPY nginx/ingress.conf /etc/nginx/http.d/ingress.conf
 COPY rootfs/ /
 
+RUN chown -R nginx:nginx /var/www && chmod -R 755 /var/www
+
 COPY main.py /main.py
 COPY run.sh /run.sh
 RUN chmod a+x /main.py /run.sh
