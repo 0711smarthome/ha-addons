@@ -17,6 +17,18 @@
         #adminLogin.d-none { display: none !important; }
         .header-content { display: flex; align-items: center; }
         .header-content img { margin-right: 15px; }
+        #userMainStep .col-lg-3, #userMainStep .col-lg-9 {
+            border: 1px solid #999999;
+            padding: 10px 20px;
+            border-radius: 15px;
+        }
+
+        a[data-bs-toggle="collapse"] .bi {
+            transition: transform 0.2s ease-in-out;
+        }
+        a[data-bs-toggle="collapse"][aria-expanded="true"] .bi {
+            transform: rotate(180deg);
+        }
     </style>
 </head>
 <body class="bg-light">
@@ -97,10 +109,16 @@
                             </div>
                         </div>
                         <div class="mt-4">
-                            <h3 class="h6">Protokoll</h3>
-                            <pre id="userDebugLog" class="form-control bg-dark text-white" style="height: 300px; font-size: 0.8em;"></pre>
+                            <h3 class="h6 mb-0">
+                                <a href="#userDebugLogCollapse" data-bs-toggle="collapse" role="button" aria-expanded="false" aria-controls="userDebugLogCollapse" class="text-decoration-none text-body d-flex justify-content-between align-items-center w-100 p-2">
+                                    <span>Protokoll</span>
+                                    <i class="bi bi-chevron-down"></i>
+                                </a>
+                            </h3>
+                            <div class="collapse" id="userDebugLogCollapse">
+                                <pre id="userDebugLog" class="form-control bg-dark text-white mt-1" style="height: 300px; font-size: 0.8em;"></pre>
+                            </div>
                         </div>
-                    </div>
                 </div>
             </div>
         </div>
